@@ -14,7 +14,7 @@
 </head>
 <body>
 <main>
-  <h1>Testes dos critérios de aceite — Fases 1 a 6b</h1>
+  <h1>Testes dos critérios de aceite — Fases 1 a 6c</h1>
   <p id="resumo">Rodando…</p>
   <ol id="resultados"></ol>
   <h2>Validação do <code>curated.js</code></h2>
@@ -27,6 +27,7 @@ import { getVoicings, checkShape, curatedFor, curatedReport, identifyChord } fro
 import { createStorage, formatRoute, parseRoute, splitProgression } from './js/storage.js';
 import { parseTab, stepSeconds, TAB_EXAMPLE, eventsToGrid, gridToText, gridStarts, tabLabels } from './js/tab.js';
 import { INSTRUMENTS } from './js/instruments.js';
+import { parseMusicXML, partToGrid, matchInstrument, hasTab, unzipMXL } from './js/musicxml.js';
 import { renderDiagram } from './js/diagram.js';
 import { play, setContext, activeVoices, voicesFor, ksSamples } from './js/audio.js';
 
@@ -400,6 +401,66 @@ G|--2--|`, 4);
   report('gridStarts: passo inicial de cada coluna', gridStarts(cols).join() === '0,4,8,16');
   const uk = gridToText([{ frets: [0, 0, 0, 3], dur: 1 }], tabLabels(INSTRUMENTS.ukulele.tunings[Object.keys(INSTRUMENTS.ukulele.tunings)[0]]));
   report('gridToText: ukulele, linha de cima = corda mais aguda; grade curta ainda é lida', parseTab(uk, 4).events[0]?.frets.join() === '0,0,0,3', uk);
+}
+
+// ---------- Fase 6c: MusicXML ----------
+{
+  const tuning = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'].map((n, i) => `<staff-tuning line="${i + 1}"><tuning-step>${n[0]}</tuning-step><tuning-octave>${n[1]}</tuning-octave></staff-tuning>`).join('');
+  const tn = (dur, s, f, extra = '') => `<note>${extra}<pitch><step>C</step><octave>4</octave></pitch><duration>${dur}</duration><notations><technical><string>${s}</string><fret>${f}</fret></technical></notations></note>`;
+  const XML = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1"><work><work-title>Teste</work-title></work>
+<part-list><score-part id="P1"><part-name>Violão</part-name></score-part><score-part id="P2"><part-name>Piano</part-name></score-part></part-list>
+<part id="P1">
+ <measure number="1"><attributes><divisions>2</divisions><time><beats>3</beats><beat-type>4</beat-type></time>
+  <staff-details><staff-lines>6</staff-lines>${tuning}</staff-details></attributes>
+  <direction><sound tempo="100"/></direction>
+  ${tn(2, 5, 3)}${tn(2, 2, 1, '<chord/>')}<note><rest/><duration>1</duration></note>${tn(1, 3, 0).replace('<duration>', '<tie type="start"/><duration>')}
+  <note><grace/><pitch><step>D</step><octave>4</octave></pitch><notations><technical><string>2</string><fret>3</fret></technical></notations></note>
+  <forward><duration>2</duration></forward></measure>
+ <measure number="2">${tn(2, 3, 0).replace('<duration>', '<duration>').replace('</duration>', '</duration><tie type="stop"/>')}${tn(2, 1, 12)}
+  <forward><duration>2</duration></forward><backup><duration>6</duration></backup>${tn(6, 6, 0)}</measure>
+</part>
+<part id="P2"><measure number="1"><attributes><divisions>1</divisions></attributes>
+  <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration></note>
+  <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration></note>
+  <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration></note>
+  <note><pitch><step>B</step><alter>-1</alter><octave>4</octave></pitch><duration>1</duration></note></measure></part>
+</score-partwise>`;
+  const r = parseMusicXML(XML);
+  report('parseMusicXML: título, andamento, 2 partes, afinação das cordas', !r.error && r.title === 'Teste' && r.bpm === 100 && r.parts.length === 2 && r.parts[0].strings.join() === '40,45,50,55,59,64', r.error || JSON.stringify(r.parts[0].strings));
+  const p1 = r.parts[0];
+  report('parseMusicXML: acorde, pausa, ligadura (sem novo ataque), ornamento ignorado, backup/forward', p1.notes.map(n => `${n.start}:${n.string}/${n.fret}`).join() === '0:5/3,0:2/1,1.5:3/0,4:1/12,3:6/0' && p1.notes[2].dur === 1.5 && p1.end === 6, p1.notes.map(n => `${n.start}:${n.string}/${n.fret}`).join());
+  report('matchInstrument: afinação E A D G B E → violão padrão; parte sem tablatura → null', JSON.stringify(matchInstrument(p1, INSTRUMENTS)) === '{"instrument":"violao","tuning":"padrao"}' && matchInstrument(r.parts[1], INSTRUMENTS) === null && hasTab(p1) && !hasTab(r.parts[1]));
+  const vio = INSTRUMENTS.violao.tunings.padrao.courses.map(c => noteToMidi(c.notes[0]));
+  const g = partToGrid(p1, vio);
+  report('partToGrid: corda/casa e durações do arquivo (3/4 em colcheias)', g.fromTab && g.unit === 8 && g.measure === 6 && JSON.stringify(g.cols) === JSON.stringify([
+    { frets: [-1, 3, -1, -1, 1, -1], dur: 3 }, { frets: [-1, -1, -1, 0, -1, -1], dur: 3 }, { frets: [0, -1, -1, -1, -1, -1], dur: 2 }, { frets: [-1, -1, -1, -1, -1, 12], dur: 4 }]), JSON.stringify(g));
+  const txt = gridToText(g.cols, tabLabels(INSTRUMENTS.violao.tunings.padrao), { measure: g.measure });
+  const back = parseTab(txt, 6);
+  report('MusicXML → texto da 6a → parseTab: mesmas notas e tempos', !back.error && back.events.map(e => `${e.step}:${e.frets.join('')}`).join() === '0:-13-1-11-1,3:-1-1-10-1-1,6:0-1-1-1-1-1,8:-1-1-1-1-112' && back.steps === 12, back.error || txt);
+  const gp = partToGrid(r.parts[1], vio);
+  report('partToGrid: partitura sem corda/casa → casa mais baixa pela altura', !gp.fromTab && gp.cols.map(c => c.frets.join(' ')).join(' | ') === '-1 -1 -1 -1 1 -1 | -1 -1 -1 -1 -1 0 | -1 -1 -1 -1 -1 3 | -1 -1 -1 -1 -1 6', gp.cols.map(c => c.frets.join(' ')).join(' | '));
+  report('parseMusicXML: rejeita XML inválido e documento que não é MusicXML', !!parseMusicXML('<a><b></a>').error && !!parseMusicXML('<html/>').error);
+  // .mxl: ZIP com container.xml e a partitura comprimida (deflate)
+  const enc = new TextEncoder();
+  const deflate = async s => new Uint8Array(await new Response(new Blob([enc.encode(s)]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer());
+  const files = [['META-INF/container.xml', enc.encode('<container><rootfiles><rootfile full-path="score.xml"/></rootfiles></container>'), 0], ['score.xml', await deflate(XML), 8]];
+  const parts = [], central = [];
+  let off = 0;
+  for (const [name, data, method] of files) {
+    const nm = enc.encode(name), h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(8, method, true); h.setUint32(18, data.length, true); h.setUint16(26, nm.length, true);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(10, method, true); c.setUint32(20, data.length, true); c.setUint16(28, nm.length, true); c.setUint32(42, off, true);
+    parts.push(new Uint8Array(h.buffer), nm, data); central.push(new Uint8Array(c.buffer), nm);
+    off += 30 + nm.length + data.length;
+  }
+  const cdSize = central.reduce((s, x) => s + x.length, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, 2, true); e.setUint16(10, 2, true); e.setUint32(12, cdSize, true); e.setUint32(16, off, true);
+  const zip = await new Blob([...parts, ...central, new Uint8Array(e.buffer)]).arrayBuffer();
+  let mxl = '';
+  try { mxl = await unzipMXL(zip); } catch (err) { mxl = err.message; }
+  report('unzipMXL: lê .mxl (ZIP + deflate) pelo container.xml', mxl === XML, mxl.slice(0, 80));
 }
 
 // Saída na tela

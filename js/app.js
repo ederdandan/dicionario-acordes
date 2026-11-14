@@ -1,5 +1,6 @@
 // app.js — orquestra interface, estado e eventos.
-import { CATEGORIES, CHORD_TYPES, ROOT_GRID, TYPE_BY_Q, chordNotes, pcOf, spell, toPt } from './theory.js';
+import { CATEGORIES, CHORD_TYPES, ROOT_GRID, TYPE_BY_Q, chordNotes, noteToMidi, pcOf, spell, toPt } from './theory.js';
+import { parseMusicXML, partToGrid, matchInstrument, hasTab, unzipMXL } from './musicxml.js';
 import { parseChord, suggest } from './parser.js';
 import { INSTRUMENTS, DEFAULT_INSTRUMENT, DEFAULT_TUNING } from './instruments.js';
 import { getVoicings, identifyChord } from './voicings.js';
@@ -1051,8 +1052,9 @@ function renderTabList() {
 }
 
 /** Carrega uma tablatura no editor (salva, exemplo ou importada). */
-function loadTab(t) {
+function loadTab(t, { keepXML = false } = {}) {
   tabStop();
+  if (!keepXML) { TAB.xml = null; $('tab-parte-box').hidden = true; }
   TAB.editId = t.id ?? null;
   TAB.a = TAB.b = TAB.cursor = -1;
   $('tab-nome').value = t.name;
@@ -1062,6 +1064,43 @@ function loadTab(t) {
   if (t.unit) $('tab-unidade').value = String(t.unit);
   tabParse();
   if (TAB.mode === 'grade') { gridFromText(); renderTabView(); }
+}
+
+// ----- Importar MusicXML (6c) -----
+async function importXML(file) {
+  try {
+    const buf = await file.arrayBuffer();
+    const head = new Uint8Array(buf, 0, Math.min(2, buf.byteLength));
+    const zip = head[0] === 0x50 && head[1] === 0x4b; // "PK": .mxl compactado
+    const r = parseMusicXML(zip ? await unzipMXL(buf) : new TextDecoder().decode(buf));
+    if (r.error) { $('tab-msg').textContent = r.error; return; }
+    const parts = r.parts.map((p, k) => ({ p, k })).filter(x => x.p.notes.length);
+    TAB.xml = { ...r, file: file.name.replace(/\.[^.]+$/, '') };
+    $('tab-parte').replaceChildren(...parts.map(({ p, k }) => Object.assign(document.createElement('option'), {
+      value: k, textContent: `${p.name}${hasTab(p) ? ' (tablatura)' : ' (partitura)'}`,
+    })));
+    $('tab-parte').value = String((parts.find(x => hasTab(x.p)) || parts[0]).k);
+    $('tab-parte-box').hidden = parts.length < 2;
+    loadXMLPart(+$('tab-parte').value);
+  } catch (e) {
+    $('tab-msg').textContent = `Não foi possível importar: ${e.message}`;
+  }
+}
+
+function loadXMLPart(k, keepInstrument = false) {
+  const x = TAB.xml, part = x.parts[k];
+  const [ci, ct] = tabKey();
+  const m = (!keepInstrument && matchInstrument(part, INSTRUMENTS)) || { instrument: ci, tuning: ct };
+  const tn = INSTRUMENTS[m.instrument].tunings[m.tuning];
+  const g = partToGrid(part, tn.courses.map(c => Math.min(...c.notes.map(noteToMidi))));
+  const name = [x.title || x.file, x.parts.length > 1 ? part.name : ''].filter(Boolean).join(' — ');
+  TAB.editId = null;
+  loadTab({ name, instrument: m.instrument, tuning: m.tuning, unit: g.unit, text: gridToText(g.cols, tabLabels(tn), { measure: g.measure }),
+    bpm: x.bpm ? Math.min(240, Math.max(40, x.bpm)) : 0 }, { keepXML: true });
+  const notes = part.notes.length - g.dropped;
+  $('tab-msg').textContent = [`Importado: ${notes} nota(s)${g.fromTab ? '' : ' — casas calculadas pela altura (a parte não tem corda/casa)'}`,
+    g.dropped ? `${g.dropped} nota(s) fora do alcance do instrumento` : '', $('tab-msg').textContent].filter(Boolean).join(' · ');
+  notify('MusicXML importado');
 }
 
 function openTab(t) {
@@ -1080,6 +1119,8 @@ $('tab-texto').addEventListener('input', () => { tabStop(); tabParse(); });
 $('tab-acordes').addEventListener('input', () => { tabStop(); tabParse(); });
 $('tab-instrumento').addEventListener('input', () => {
   tabStop();
+  // Partitura importada sem corda/casa: recalcula as posições para o novo instrumento
+  if (TAB.xml && !hasTab(TAB.xml.parts[+$('tab-parte').value])) return loadXMLPart(+$('tab-parte').value, true);
   if (tabParse() && TAB.mode === 'grade') { gridFromText(); renderTabView(); }
   else if (TAB.mode === 'grade') setTabMode('texto');
 });
@@ -1093,6 +1134,13 @@ $('tab-a').addEventListener('click', () => setMark('a'));
 $('tab-b').addEventListener('click', () => setMark('b'));
 $('tab-ab-limpar').addEventListener('click', () => { TAB.a = TAB.b = -1; renderAB(); });
 $('tab-exemplo').addEventListener('click', () => loadTab({ name: 'Exemplo (C · G/B · Am · F)', instrument: 'violao', tuning: 'padrao', text: TAB_EXAMPLE }));
+$('tab-importar').addEventListener('click', () => $('tab-arquivo').click());
+$('tab-arquivo').addEventListener('change', () => {
+  const f = $('tab-arquivo').files[0];
+  $('tab-arquivo').value = '';
+  if (f) importXML(f);
+});
+$('tab-parte').addEventListener('change', () => loadXMLPart(+$('tab-parte').value));
 $('tab-salvar').addEventListener('click', () => {
   if (!tabParse()) { $('tab-msg').textContent ||= 'Digite uma tablatura antes de salvar.'; return; }
   const [i, t] = tabKey();

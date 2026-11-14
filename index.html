@@ -147,6 +147,7 @@
       <div class="tab-fields">
         <label>Nome <input id="tab-nome" type="text" autocomplete="off" placeholder="Minha tablatura"></label>
         <label>Instrumento <select id="tab-instrumento"></select></label>
+        <label id="tab-parte-box" hidden>Parte do MusicXML <select id="tab-parte"></select></label>
       </div>
       <div class="tab-mode" role="group" aria-label="Modo de edição">
         <button id="tab-modo-texto" type="button" class="btn small" aria-pressed="true">Texto</button>
@@ -189,6 +190,8 @@
         <button id="tab-play" type="button" class="btn play-btn">▶ Tocar</button>
         <button id="tab-salvar" type="button" class="btn">Salvar</button>
         <button id="tab-exemplo" type="button" class="btn">Exemplo</button>
+        <button id="tab-importar" type="button" class="btn" title="Arquivo .musicxml, .xml ou .mxl (Guitar Pro, MuseScore, TuxGuitar…)">Importar MusicXML</button>
+        <input id="tab-arquivo" type="file" accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml" hidden>
       </div>
       <p id="tab-msg" class="form-msg" aria-live="polite"></p>
       <div id="tab-view" class="tab-view" aria-label="Tablatura (toque num número para tocar dali)"></div>
