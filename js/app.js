@@ -123,7 +123,7 @@ function renderTabs() {
   const chords = state.tab === 'inversoes'
     ? inversionsFor(root)
     : CHORD_TYPES.filter(t => t.cat === state.tab).map(t => parseChord(root + t.q));
-  panel.replaceChildren(...chords.map(c => button(c.symbol, 'chip', () => selectChord(c), {
+  panel.replaceChildren(...chords.map(c => button(c.symbol, 'chip', () => { selectChord(c); revealViewer(); }, {
     'aria-pressed': String(c.symbol === state.chord.symbol), title: chordTitle(c),
   })));
 }
@@ -186,10 +186,13 @@ function render() {
 
 function move(d) {
   const i = state.idx + d;
-  if (i < 0 || i >= state.voicings.length) return;
+  if (i < 0 || i >= state.voicings.length) return false;
   state.idx = i;
   renderViewer();
   renderAnalysis();
+  renderStage();
+  $('diagrama').firstElementChild?.classList.add(d > 0 ? 'slide-next' : 'slide-prev');
+  return true;
 }
 
 // ---------- Áudio ----------
@@ -221,7 +224,10 @@ function setupSearch() {
     msg.textContent = '';
     input.value = c.symbol;
     close();
+    input.blur(); // fecha o teclado do celular
     selectChord(c);
+    showView('acordes');
+    revealViewer();
   };
 
   input.addEventListener('input', () => {
@@ -251,7 +257,9 @@ function setupSearch() {
 // ---------- Rota na URL (#/violao/C7M/2) ----------
 function syncHash() {
   const h = formatRoute({ instrument: state.instrument, tuning: state.tuning, symbol: state.chord.symbol, idx: state.idx }, INSTRUMENTS);
-  if (location.hash !== h) history[routeMode === 'replace' ? 'replaceState' : 'pushState'](null, '', h);
+  if (location.hash === h) return;
+  if (stageOpen()) history.replaceState(history.state, '', h); // o palco é uma única entrada no histórico
+  else history[routeMode === 'replace' ? 'replaceState' : 'pushState'](null, '', h);
 }
 
 function applyRoute(hash) {
@@ -314,7 +322,8 @@ function openFavorite(f) {
   state.tuning = f.tuning;
   selectChord(parseChord(f.symbol), { idx: f.idx, frets: f.frets });
   if (instChanged) renderReverse();
-  $('diagrama').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  showView('acordes');
+  revealViewer();
 }
 
 function renderLibrary() {
@@ -346,7 +355,8 @@ function renderLibrary() {
 $('favoritar').addEventListener('click', () => {
   const f = currentFav();
   if (!f) return;
-  if (store.isFavorite(f)) store.removeFavorite(favoriteId(f)); else store.addFavorite(f);
+  if (store.isFavorite(f)) { store.removeFavorite(favoriteId(f)); notify('Removido dos favoritos'); }
+  else notify(store.addFavorite(f) ? `${f.symbol} salvo nos favoritos` : 'Não foi possível salvar (armazenamento indisponível)');
   renderFavButton();
   renderLibrary();
 });
@@ -362,6 +372,7 @@ $('prog-form').addEventListener('submit', e => {
   const chords = parts.map(p => parseChord(p).symbol);
   const prog = store.saveProgression({ name: $('prog-nome').value.trim() || chords.join(' → '), chords });
   msg.textContent = `Progressão “${prog.name}” salva.`;
+  notify('Progressão salva');
   $('prog-nome').value = $('prog-acordes').value = '';
   renderLibrary();
 });
@@ -369,7 +380,8 @@ $('prog-form').addEventListener('submit', e => {
 function startRehearsal(prog) {
   state.rehearsal = { prog, pos: 0 };
   goRehearsal(0);
-  $('ensaio').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  showView('acordes');
+  revealViewer();
 }
 
 function goRehearsal(pos) {
@@ -391,12 +403,14 @@ function renderRehearsal() {
   })));
   $('ensaio-anterior').disabled = r.pos <= 0;
   $('ensaio-proximo').disabled = r.pos >= n - 1;
+  renderStage();
 }
 
 $('ensaio-anterior').addEventListener('click', () => goRehearsal(state.rehearsal.pos - 1));
 $('ensaio-proximo').addEventListener('click', () => goRehearsal(state.rehearsal.pos + 1));
 $('ensaio-tocar').addEventListener('click', () => playCurrent('batida'));
-$('ensaio-sair').addEventListener('click', () => { state.rehearsal = null; renderRehearsal(); });
+$('ensaio-sair').addEventListener('click', () => { closeStage(); state.rehearsal = null; renderRehearsal(); });
+$('ensaio-palco').addEventListener('click', () => openStage());
 
 // ---------- Backup (JSON) ----------
 $('exportar').addEventListener('click', () => {
@@ -465,7 +479,7 @@ function renderReverse({ keepInput = false } = {}) {
   const found = identifyChord(rev.frets, state.instrument, state.tuning);
   list.replaceChildren(...(found.length ? found.map(r => {
     const li = document.createElement('li');
-    const b = button(r.symbol, 'chip', () => selectChord(r.chord, { frets: rev.frets }), { title: chordTitle(r.chord) });
+    const b = button(r.symbol, 'chip', () => { selectChord(r.chord, { frets: rev.frets }); showView('acordes'); revealViewer(); }, { title: chordTitle(r.chord) });
     const notes = [r.rootInBass ? 'tônica no baixo' : `baixo em ${r.bassName}`];
     if (r.omitted) notes.push(`omite ${r.omitted} nota${r.omitted > 1 ? 's' : ''}`);
     li.append(b, Object.assign(document.createElement('small'), { textContent: `${chordTitle(r.chord)} · ${notes.join(' · ')}` }));
@@ -536,6 +550,127 @@ function setupPWA() {
   });
 }
 
+// ---------- Celular: seções, rolagem, deslizar, avisos ----------
+const mobile = () => matchMedia('(max-width: 859px)').matches;
+
+function showView(v) {
+  if (document.body.dataset.view === v) return;
+  document.body.dataset.view = v;
+  document.querySelectorAll('.bottom-nav [data-go]').forEach(b => {
+    if (b.dataset.go === v) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
+  if (mobile()) window.scrollTo({ top: 0 });
+}
+document.querySelectorAll('.bottom-nav [data-go]').forEach(b => b.addEventListener('click', () => showView(b.dataset.go)));
+
+/** No celular o diagrama fica acima do seletor: depois de escolher, volta até ele. */
+function revealViewer() {
+  if (!mobile()) return;
+  const top = document.querySelector('.viewer').getBoundingClientRect().top + window.scrollY - 8;
+  if (Math.abs(window.scrollY - top) > 40) window.scrollTo({ top, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+}
+
+let notifyTimer = 0;
+function notify(msg) {
+  const el = $('aviso');
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(notifyTimer);
+  notifyTimer = setTimeout(() => { el.hidden = true; }, 2200);
+}
+
+/** Deslizar horizontal (toque/caneta). Anula o clique que vem junto, para não tocar uma corda. */
+function addSwipe(el, onSwipe) {
+  let x0 = 0, y0 = 0, id = null, swiped = false;
+  el.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse') return;
+    id = e.pointerId; x0 = e.clientX; y0 = e.clientY; swiped = false;
+  });
+  el.addEventListener('pointerup', e => {
+    if (e.pointerId !== id) return;
+    id = null;
+    const dx = e.clientX - x0, dy = e.clientY - y0;
+    if (Math.abs(dx) > 45 && Math.abs(dx) > 1.5 * Math.abs(dy)) { swiped = true; onSwipe(dx < 0 ? 1 : -1); }
+  });
+  el.addEventListener('pointercancel', () => { id = null; });
+  el.addEventListener('click', e => { if (swiped) { e.stopPropagation(); e.preventDefault(); swiped = false; } }, true);
+}
+addSwipe($('diagrama'), d => move(d));
+addSwipe($('palco-diagrama'), d => goRehearsal(state.rehearsal.pos + d));
+
+// ---------- Modo palco ----------
+const stageOpen = () => !$('palco').hidden;
+let wakeLock = null, stageReturnFocus = null, ignoreHash = false;
+
+async function keepAwake() {
+  try { if ('wakeLock' in navigator && stageOpen()) wakeLock = await navigator.wakeLock.request('screen'); } catch { /* sem suporte ou negado */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && stageOpen()) keepAwake(); });
+
+function openStage() {
+  if (!state.rehearsal || stageOpen()) return;
+  stageReturnFocus = document.activeElement;
+  $('palco').hidden = false;
+  document.documentElement.style.overflow = 'hidden';
+  history.pushState({ stage: true }, '', location.hash); // o "voltar" do Android fecha o palco
+  const r = state.rehearsal;
+  if (parseChord(r.prog.chords[r.pos])?.symbol !== state.chord.symbol) goRehearsal(r.pos); // volta ao acorde do ensaio
+  renderStage();
+  keepAwake();
+  $('palco-fechar').focus();
+}
+
+function closeStage(fromHistory = false) {
+  if (!stageOpen()) return;
+  $('palco').hidden = true;
+  document.documentElement.style.overflow = '';
+  wakeLock?.release().catch(() => {});
+  wakeLock = null;
+  if (!fromHistory && history.state?.stage) { ignoreHash = true; history.back(); }
+  stageReturnFocus?.focus?.();
+}
+
+function renderStage() {
+  if (!stageOpen() || !state.rehearsal) return;
+  const { prog, pos } = state.rehearsal, n = prog.chords.length;
+  $('palco-prog').textContent = prog.name;
+  $('palco-contador').textContent = `${pos + 1}/${n}`;
+  $('palco-simbolo').textContent = state.chord.symbol;
+  const v = state.voicings[state.idx];
+  $('palco-diagrama').replaceChildren(v
+    ? renderDiagram(v, inst(), tun(), { leftHanded: lefty(), onString: course => playCurrent('dedilhar', course) })
+    : Object.assign(document.createElement('p'), { className: 'empty', textContent: 'Sem posição viável.' }));
+  const next = prog.chords[pos + 1];
+  $('palco-seguinte').replaceChildren(...(next ? ['Próximo: ', Object.assign(document.createElement('strong'), { textContent: next })] : ['Fim da progressão']));
+  $('palco-anterior').disabled = pos <= 0;
+  $('palco-avancar').disabled = pos >= n - 1;
+}
+
+/** Teclado e pedaleiras Bluetooth (enviam setas, PageUp/PageDown ou espaço). */
+function stageKeys(e) {
+  const fwd = ['ArrowRight', 'PageDown', 'ArrowDown'], back = ['ArrowLeft', 'PageUp', 'ArrowUp'];
+  if (e.key === 'Escape') { e.preventDefault(); closeStage(); }
+  else if (fwd.includes(e.key)) { e.preventDefault(); goRehearsal(state.rehearsal.pos + 1); }
+  else if (back.includes(e.key)) { e.preventDefault(); goRehearsal(state.rehearsal.pos - 1); }
+  else if (e.key === ' ' && !e.target.closest('button')) { e.preventDefault(); playCurrent('batida'); }
+  else if (e.key === 'Tab') { // mantém o foco dentro do palco
+    const f = [...$('palco').querySelectorAll('button:not(:disabled), [tabindex="0"]')];
+    const i = f.indexOf(document.activeElement);
+    if (e.shiftKey ? i <= 0 : i === f.length - 1) { e.preventDefault(); f[e.shiftKey ? f.length - 1 : 0].focus(); }
+  }
+}
+
+$('palco-fechar').addEventListener('click', () => closeStage());
+$('palco-anterior').addEventListener('click', () => goRehearsal(state.rehearsal.pos - 1));
+$('palco-avancar').addEventListener('click', () => goRehearsal(state.rehearsal.pos + 1));
+$('palco-tocar').addEventListener('click', () => playCurrent('batida'));
+// Sair do palco (✕ ou "voltar") não deve desfazer o acorde atual: grava-o de novo no histórico.
+window.addEventListener('popstate', () => {
+  const leaving = stageOpen() && !history.state?.stage;
+  if (leaving) closeStage(true);
+  if (leaving || ignoreHash) { ignoreHash = false; syncHash(); }
+});
+
 // ---------- Início ----------
 $('anterior').addEventListener('click', () => move(-1));
 $('tocar-dedilhar').addEventListener('click', () => playCurrent('dedilhar'));
@@ -553,6 +688,7 @@ document.addEventListener('visibilitychange', () => {
 });
 $('proxima').addEventListener('click', () => move(1));
 document.addEventListener('keydown', e => {
+  if (stageOpen()) return stageKeys(e);
   if (e.target.closest('input, [role="tab"]')) return;
   if (e.key === 'ArrowLeft') move(-1);
   if (e.key === 'ArrowRight') move(1);

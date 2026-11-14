@@ -29,6 +29,7 @@ python -m http.server 8000
 - Favoritos e progressões com modo ensaio (anterior/próximo/tocar), salvos no navegador; backup em JSON.
 - Modo canhoto, tema claro/escuro/automático e links compartilháveis (`#/violao/C7M/2`, `#/viola/rioAbaixo/G%2FB/2`).
 - Identificador reverso: monte um shape no braço (ou digite `x32010`) e veja os nomes possíveis.
+- Feito para o celular: abas inferiores, deslizar para trocar de posição e **modo palco** (tela cheia, tela sempre acesa, compatível com pedaleira Bluetooth).
 
 ## Publicando uma nova versão
 

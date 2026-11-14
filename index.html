@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="Dicionário de acordes para violão, viola caipira e ukulele: busca por cifra, diagramas e análise de notas.">
   <meta name="theme-color" content="#b5532a">
   <title>Dicionário de Acordes</title>
@@ -22,7 +22,7 @@
   </script>
   <link rel="stylesheet" href="./css/app.css">
 </head>
-<body>
+<body data-view="acordes">
   <header class="topbar">
     <div class="brand-row">
       <h1 class="brand">Dicionário de Acordes</h1>
@@ -43,7 +43,7 @@
   </header>
 
   <main class="layout">
-    <section class="panel picker" aria-label="Escolha do acorde">
+    <section class="panel picker" data-view="acordes" aria-label="Escolha do acorde">
       <h2 class="panel-title">Instrumento</h2>
       <div id="instrumentos" class="seg" role="group" aria-label="Instrumento"></div>
       <div id="afinacoes" class="seg" role="group" aria-label="Afinação"></div>
@@ -53,11 +53,12 @@
       <div id="tipos" class="type-grid" role="tabpanel"></div>
     </section>
 
-    <section class="panel viewer" aria-label="Diagrama">
+    <section class="panel viewer" data-view="acordes" aria-label="Diagrama">
       <div id="ensaio" class="rehearsal" hidden>
         <div class="rehearsal-head">
           <strong id="ensaio-nome"></strong>
           <span id="ensaio-contador" aria-live="polite"></span>
+          <button id="ensaio-palco" type="button" class="btn small">⛶ Palco</button>
           <button id="ensaio-sair" type="button" class="btn small" aria-label="Sair do modo ensaio">✕ Sair</button>
         </div>
         <div id="ensaio-acordes" class="rehearsal-chords" role="group" aria-label="Acordes da progressão"></div>
@@ -72,7 +73,8 @@
         <p id="acorde-nome" class="chord-name"></p>
         <p id="afinacao-info" class="tuning-info"></p>
       </div>
-      <div id="diagrama" class="diagram-main"></div>
+      <div id="diagrama" class="diagram-main swipe" aria-describedby="dica-deslizar"></div>
+      <p id="dica-deslizar" class="sr-only">Deslize para os lados para trocar de posição.</p>
       <p id="posicao-rotulo" class="voicing-label"></p>
       <div class="play" role="group" aria-label="Ouvir o acorde">
         <button id="tocar-dedilhar" type="button" class="btn play-btn">▶ Dedilhar</button>
@@ -88,7 +90,7 @@
       <div id="miniaturas" class="thumbs" role="group" aria-label="Posições"></div>
     </section>
 
-    <section class="panel analysis" aria-label="Análise">
+    <section class="panel analysis" data-view="acordes" aria-label="Análise">
       <h2 class="panel-title">Análise</h2>
       <dl class="facts">
         <dt>Notas</dt><dd id="analise-notas"></dd>
@@ -101,7 +103,7 @@
       </table>
     </section>
 
-    <section class="panel library" aria-label="Favoritos e repertório">
+    <section class="panel library" data-view="repertorio" aria-label="Favoritos e repertório">
       <h2 class="panel-title">Favoritos</h2>
       <ul id="favoritos" class="item-list"></ul>
       <h2 class="panel-title">Progressões / Repertório</h2>
@@ -124,7 +126,7 @@
       <p id="backup-msg" class="form-msg" aria-live="polite"></p>
     </section>
 
-    <section class="panel reverse" aria-label="Identificar acorde">
+    <section class="panel reverse" data-view="identificar" aria-label="Identificar acorde">
       <h2 class="panel-title">Identificar acorde</h2>
       <p class="hint">Toque no braço para montar um shape (acima da corda: muda ↔ solta) ou digite as casas.</p>
       <div class="reverse-input">
@@ -141,6 +143,30 @@
       <ol id="reverso-resultados" class="reverse-results" aria-live="polite"></ol>
     </section>
   </main>
+
+  <nav class="bottom-nav" aria-label="Seções">
+    <button type="button" data-go="acordes" aria-current="page"><span aria-hidden="true">♪</span>Acordes</button>
+    <button type="button" data-go="repertorio"><span aria-hidden="true">★</span>Repertório</button>
+    <button type="button" data-go="identificar"><span aria-hidden="true">?</span>Identificar</button>
+  </nav>
+
+  <div id="palco" class="stage" role="dialog" aria-modal="true" aria-labelledby="palco-simbolo" hidden>
+    <div class="stage-top">
+      <span id="palco-prog" class="stage-prog"></span>
+      <span id="palco-contador" class="stage-count" aria-live="polite"></span>
+      <button id="palco-fechar" type="button" class="btn" aria-label="Sair do modo palco">✕</button>
+    </div>
+    <h2 id="palco-simbolo" class="stage-symbol"></h2>
+    <div id="palco-diagrama" class="stage-diagram swipe"></div>
+    <p id="palco-seguinte" class="stage-next"></p>
+    <div class="stage-nav">
+      <button id="palco-anterior" type="button" class="btn" aria-label="Acorde anterior">◀</button>
+      <button id="palco-tocar" type="button" class="btn play-btn">▶ Tocar</button>
+      <button id="palco-avancar" type="button" class="btn" aria-label="Próximo acorde">▶</button>
+    </div>
+  </div>
+
+  <div id="aviso" class="toast toast-info" role="status" aria-live="polite" hidden></div>
 
   <div id="atualizacao" class="toast" role="status" hidden>
     <span>Nova versão disponível</span>
