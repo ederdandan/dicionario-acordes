@@ -772,6 +772,7 @@ window.addEventListener('popstate', () => {
 const TAB = {
   parsed: null, playing: false, timer: 0, raf: 0, start: 0, next: 0, dt: 0.1, queue: [], spans: [], on: -1, editId: null,
   mode: 'texto', grid: null, sel: { col: 0, course: 0 }, colEv: [], cursor: -1, a: -1, b: -1, digit: null,
+  open: false, dirty: false, // há uma tablatura aberta no Player/Editar; alterações não salvas
 };
 const tabKey = () => $('tab-instrumento').value.split('/');
 const tabTuning = () => { const [i, t] = tabKey(); return INSTRUMENTS[i].tunings[t]; };
@@ -946,8 +947,11 @@ function renderAB() {
   if (ab) for (let e = TAB.a; e <= TAB.b; e++) (TAB.spans[e] || []).forEach(s => s.classList.add('in-ab'));
   (TAB.spans[TAB.a] || []).forEach(s => s.classList.add('mark-a'));
   (TAB.spans[TAB.b] || []).forEach(s => s.classList.add('mark-b'));
-  $('tab-ab').textContent = ab ? `A–B: nota ${TAB.a + 1} → ${TAB.b + 1} (em laço)`
-    : TAB.a >= 0 ? `A na nota ${TAB.a + 1} — marque o B` : TAB.b >= 0 ? `B na nota ${TAB.b + 1} — marque o A` : 'A–B: desligado';
+  $('tab-ab').textContent = ab ? `Trecho: nota ${TAB.a + 1} → ${TAB.b + 1} (repete em laço)`
+    : TAB.a >= 0 ? `Início na nota ${TAB.a + 1} — marque o fim` : TAB.b >= 0 ? `Fim na nota ${TAB.b + 1} — marque o início` : '';
+  $('tab-a').setAttribute('aria-pressed', String(TAB.a >= 0));
+  $('tab-b').setAttribute('aria-pressed', String(TAB.b >= 0));
+  $('tab-ab-limpar').disabled = TAB.a < 0 && TAB.b < 0;
 }
 
 function setMark(which) {
@@ -962,6 +966,12 @@ function setMark(which) {
 
 // ----- Editor em grade (6b) -----
 const measure = () => +$('tab-unidade').value; // 4 tempos: 16 semicolcheias ou 8 colcheias
+// Duração em figuras (em semicolcheias): nome, símbolo e fração da semibreve
+const FIGS = { 1: ['semicolcheia', '♬', '1/16'], 2: ['colcheia', '♪', '1/8'], 3: ['colcheia pontuada', '♪.', '3/16'], 4: ['semínima', '♩', '1/4'],
+  6: ['semínima pontuada', '♩.', '3/8'], 8: ['mínima', '', '1/2'], 12: ['mínima pontuada', '', '3/4'], 16: ['semibreve', '', '1'], 24: ['semibreve pontuada', '', '3/2'], 32: ['2 semibreves', '', '2'] };
+const fig = steps => FIGS[steps * 16 / measure()];
+const figName = steps => { const f = fig(steps); return f ? `${f[1] ? f[1] + ' ' : ''}${f[0]} (${f[2]})` : `${steps} ${steps === 1 ? 'passo' : 'passos'}`; };
+const figShort = steps => fig(steps)?.[2] ?? String(steps);
 
 function gridFromText() {
   const n = tabTuning().courses.length;
@@ -973,6 +983,7 @@ function gridFromText() {
 /** Grava a grade no texto (formato salvo) e re-lê. */
 function gridCommit() {
   tabStop();
+  setDirty();
   $('tab-texto').value = gridToText(TAB.grid, tabLabels(tabTuning()), { measure: measure() });
   tabParse();
 }
@@ -984,7 +995,6 @@ function setTabMode(mode) {
   $('tab-modo-grade').setAttribute('aria-pressed', String(mode === 'grade'));
   $('tab-edit-texto').hidden = mode !== 'texto';
   $('tab-edit-grade').hidden = mode !== 'grade';
-  $('tab-view').hidden = mode === 'grade';
   if (mode === 'grade') {
     if (tabParse() === null && $('tab-texto').value.trim()) { // texto com erro: não sobrescreve
       setTabMode('texto');
@@ -1031,7 +1041,7 @@ function renderGrid() {
   durRow.className = 'grid-line grid-dur';
   durRow.setAttribute('aria-hidden', 'true');
   durRow.append(Object.assign(document.createElement('span'), { className: 'gl' }));
-  g.forEach(col => durRow.append(Object.assign(document.createElement('span'), { textContent: col.dur })));
+  g.forEach(col => durRow.append(Object.assign(document.createElement('span'), { textContent: figShort(col.dur), title: figName(col.dur) })));
   grid.append(durRow);
   wrap.replaceChildren(grid);
   markSel();
@@ -1050,7 +1060,7 @@ function markSel() {
   }
   const d = TAB.grid[col]?.dur ?? 2;
   $('grade-dur').replaceChildren(...[...new Set([...DURS, d])].sort((x, y) => x - y).map(v =>
-    Object.assign(document.createElement('option'), { value: v, textContent: `${v} ${v === 1 ? 'passo' : 'passos'}` })));
+    Object.assign(document.createElement('option'), { value: v, textContent: figName(v) })));
   $('grade-dur').value = String(d);
 }
 
@@ -1142,6 +1152,16 @@ function setupGrid() {
 }
 
 function renderTabList() {
+  // Tablatura aberta (talvez não salva): atalho para continuar
+  const cur = $('tab-atual');
+  cur.hidden = !TAB.open;
+  if (TAB.open) {
+    const name = $('tab-nome').value.trim() || 'Sem nome';
+    const b = button('', 'btn open', () => showTabPane('player'), { title: `Continuar em ${name}` });
+    b.append('Continuar: ', Object.assign(document.createElement('strong'), { textContent: name }),
+      ...(TAB.dirty ? [' ', Object.assign(document.createElement('small'), { textContent: '(não salva)' })] : []));
+    cur.replaceChildren(b);
+  }
   const tabs = store.tabs();
   $('tab-lista').replaceChildren(...(tabs.length ? tabs.map(t => {
     const li = document.createElement('li');
@@ -1156,9 +1176,36 @@ function renderTabList() {
   }) : [Object.assign(document.createElement('li'), { className: 'empty-item', textContent: 'Nenhuma tablatura salva.' })]));
 }
 
+// ----- Biblioteca / Player / Editar (7d) -----
+const tabPane = () => document.querySelector('.tabmod').dataset.tabview;
+function showTabPane(pane) {
+  const sec = document.querySelector('.tabmod');
+  if (pane !== 'biblioteca' && !TAB.open) pane = 'biblioteca';
+  if (pane === 'biblioteca') tabStop();
+  sec.dataset.tabview = pane;
+  $('tab-ver').setAttribute('aria-pressed', String(pane === 'player'));
+  $('tab-editar').setAttribute('aria-pressed', String(pane === 'editar'));
+  document.body.classList.toggle('tab-docked', pane !== 'biblioteca');
+  if (pane === 'biblioteca') renderTabList();
+  else if (pane === 'editar' && TAB.mode === 'grade') renderGrid();
+  if (mobile() && document.body.dataset.view === 'tablatura') window.scrollTo({ top: 0 });
+  dockResize();
+}
+function renderTabTitle() {
+  $('tab-titulo').textContent = ($('tab-nome').value.trim() || 'Sem nome') + (TAB.dirty ? ' •' : '');
+  $('tab-titulo').title = TAB.dirty ? 'Alterações não salvas' : '';
+}
+function setDirty(d = true) { TAB.dirty = d; renderTabTitle(); }
+/** Altura do braço + transporte fixos (celular): reserva espaço e margem de rolagem. */
+function dockResize() {
+  document.body.style.setProperty('--dock-h', `${$('tab-dock').offsetHeight}px`);
+}
+if ('ResizeObserver' in window) new ResizeObserver(dockResize).observe($('tab-dock'));
+
 /** Carrega uma tablatura no editor (salva, exemplo ou importada). */
 function loadTab(t, { keepXML = false } = {}) {
   tabStop();
+  TAB.open = true;
   if (!keepXML) { TAB.xml = null; $('tab-parte-box').hidden = true; }
   TAB.editId = t.id ?? null;
   TAB.a = TAB.b = TAB.cursor = -1;
@@ -1169,6 +1216,7 @@ function loadTab(t, { keepXML = false } = {}) {
   if (t.unit) $('tab-unidade').value = String(t.unit);
   tabParse();
   if (TAB.mode === 'grade') { gridFromText(); renderTabView(); }
+  setDirty(false);
 }
 
 // ----- Importar MusicXML (6c) -----
@@ -1187,6 +1235,7 @@ async function importXML(file) {
     $('tab-parte').value = String((parts.find(x => hasTab(x.p)) || parts[0]).k);
     $('tab-parte-box').hidden = parts.length < 2;
     loadXMLPart(+$('tab-parte').value);
+    showTabPane('player');
   } catch (e) {
     $('tab-msg').textContent = `Não foi possível importar: ${e.message}`;
   }
@@ -1210,7 +1259,7 @@ function loadXMLPart(k, keepInstrument = false) {
 
 function openTab(t) {
   loadTab(t);
-  $('tab-nome').scrollIntoView({ block: 'nearest' });
+  showTabPane('player');
 }
 
 $('tab-play').addEventListener('click', () => (TAB.playing ? tabStop() : tabPlay(TAB.mode === 'grade' && TAB.cursor >= 0 ? TAB.cursor : null)));
@@ -1220,12 +1269,24 @@ $('tab-view').addEventListener('click', e => {
   TAB.cursor = +sp.dataset.ev;
   tabPlay(TAB.cursor);
 });
-$('tab-texto').addEventListener('input', () => { tabStop(); tabParse(); });
+$('tab-texto').addEventListener('input', () => { tabStop(); tabParse(); setDirty(); });
+$('tab-nome').addEventListener('input', () => setDirty());
+$('tab-bpm').addEventListener('input', () => setDirty());
+$('tab-ver').addEventListener('click', () => showTabPane('player'));
+$('tab-editar').addEventListener('click', () => showTabPane('editar'));
+$('tab-voltar').addEventListener('click', () => showTabPane('biblioteca'));
+$('tab-nova').addEventListener('click', () => {
+  loadTab({ name: '', instrument: state.instrument, tuning: state.tuning, text: '', bpm: 90, unit: 16 });
+  setTabMode('texto');
+  showTabPane('editar');
+  $('tab-texto').focus();
+});
 $('tab-acordes').addEventListener('input', () => { tabStop(); tabParse(); });
 $('tab-instrumento').addEventListener('input', () => {
   tabStop();
+  setDirty();
   // Partitura importada sem corda/casa: recalcula as posições para o novo instrumento
-  if (TAB.xml && !hasTab(TAB.xml.parts[+$('tab-parte').value])) return loadXMLPart(+$('tab-parte').value, true);
+  if (TAB.xml && !hasTab(TAB.xml.parts[+$('tab-parte').value])) { loadXMLPart(+$('tab-parte').value, true); return setDirty(); }
   if (tabParse() && TAB.mode === 'grade') { gridFromText(); renderTabView(); }
   else if (TAB.mode === 'grade') setTabMode('texto');
 });
@@ -1238,7 +1299,10 @@ $('tab-vel').addEventListener('change', () => { if (TAB.playing) tabPlay(Math.ma
 $('tab-a').addEventListener('click', () => setMark('a'));
 $('tab-b').addEventListener('click', () => setMark('b'));
 $('tab-ab-limpar').addEventListener('click', () => { TAB.a = TAB.b = -1; renderAB(); });
-$('tab-exemplo').addEventListener('click', () => loadTab({ name: 'Exemplo (C · G/B · Am · F)', instrument: 'violao', tuning: 'padrao', text: TAB_EXAMPLE }));
+$('tab-exemplo').addEventListener('click', () => {
+  loadTab({ name: 'Exemplo (C · G/B · Am · F)', instrument: 'violao', tuning: 'padrao', text: TAB_EXAMPLE });
+  showTabPane('player');
+});
 $('tab-importar').addEventListener('click', () => $('tab-arquivo').click());
 $('tab-arquivo').addEventListener('change', () => {
   const f = $('tab-arquivo').files[0];
@@ -1256,6 +1320,7 @@ $('tab-salvar').addEventListener('click', () => {
   TAB.editId = saved?.id ?? null;
   renderTabList();
   if (!saved) return notify('Não foi possível salvar');
+  setDirty(false);
   if (!store.prefs().saveWarn || !$('tab-salva').showModal) return notify('Tablatura salva neste aparelho');
   $('tab-salva-nao-avisar').checked = false;
   $('tab-salva').showModal();
@@ -1273,6 +1338,7 @@ $('tab-salva').addEventListener('close', () => {
 fillTabInstruments();
 setupGrid();
 renderTabList();
+renderAB();
 renderBoard(null);
 
 // ---------- Início ----------

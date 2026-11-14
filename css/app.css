@@ -398,3 +398,52 @@ label.check.opt { display: flex; align-items: center; gap: 8px; cursor: pointer;
 .tab-braco { overflow-x: auto; margin: 0 0 14px; }
 .fretboard { display: block; min-width: 560px; width: 100%; max-height: 190px; }
 @media (pointer: coarse) { .gc { height: 44px; min-width: 2.8em; } }
+
+/* ----- Fase 7d: Biblioteca / Player / Editar ----- */
+.tabmod[data-tabview="biblioteca"] .tab-doc { display: none; }
+.tabmod:not([data-tabview="biblioteca"]) .tab-pane-lib { display: none; }
+.tabmod[data-tabview="player"] .tab-editor { display: none; }
+.tabmod[data-tabview="editar"] #tab-view,
+.tabmod[data-tabview="editar"] .tab-avancado { display: none; }
+.tab-current { margin: 0 0 10px; }
+.tab-current .btn { width: 100%; text-align: left; border-color: var(--accent); background: var(--accent-soft); }
+.tab-saved-title { margin-top: 16px; }
+.tab-doc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 10px; }
+.tab-title { flex: 1 1 140px; min-width: 0; margin: 0; font-size: 1.1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-switch { display: flex; gap: 4px; }
+.tab-avancado { margin: 0 0 10px; font-size: .95rem; }
+.tab-avancado summary { cursor: pointer; color: var(--accent); margin-bottom: 6px; }
+.tab-dock { position: sticky; bottom: 0; z-index: 5; background: var(--surface); border-top: 1px solid var(--border); padding: 8px 0 4px; }
+.transport { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px; }
+.transport #tab-play { min-width: 104px; min-height: 44px; font-size: 1.05rem; background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.transport label { display: flex; flex-direction: column; gap: 2px; font-size: .8125rem; color: var(--muted); }
+.transport label.check { flex-direction: row; align-items: center; gap: 6px; font-size: .95rem; color: var(--fg); }
+.tp-bpm input { width: 5.5em; font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; min-height: 40px; }
+.tp-vel { flex: 1 1 140px; }
+.tp-vel span { display: flex; justify-content: space-between; gap: 8px; }
+.tp-vel output { color: var(--fg); font-variant-numeric: tabular-nums; }
+.tp-vel input { width: 100%; accent-color: var(--accent); min-height: 28px; }
+.transport .ab { flex: 1 1 100%; }
+.ab .btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.ab-status { flex: 1 1 100%; margin: 0; font-size: .8125rem; color: var(--accent); }
+.ab-status:empty { display: none; }
+.tab-block { scroll-margin: 64px 0 calc(var(--dock-h, 0px) + 80px); }
+.grid-wrap { scroll-margin: 64px 0 calc(var(--dock-h, 0px) + 80px); }
+
+@media (max-width: 859px) {
+  /* Player/Editar: braço compacto + transporte fixos acima das abas inferiores */
+  body.tab-docked[data-view="tablatura"] { padding-bottom: calc(64px + var(--dock-h, 0px) + env(safe-area-inset-bottom)); }
+  body[data-view="tablatura"] .tabmod:not([data-tabview="biblioteca"]) .tab-dock {
+    position: fixed; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom)); z-index: 35;
+    padding: 6px max(12px, env(safe-area-inset-right)) 6px max(12px, env(safe-area-inset-left)); box-shadow: 0 -4px 16px rgb(0 0 0 / .08);
+  }
+  .tab-dock .tab-braco { margin: 0 0 4px; overflow: hidden; }
+  .tab-dock .fretboard { min-width: 0; max-height: 96px; }
+  .transport { gap: 6px 10px; }
+  .transport #tab-play { min-width: 96px; }
+  .tp-vel { flex-basis: 110px; }
+  .transport .ab { gap: 4px; }
+  .transport .ab .btn { flex: 1 1 auto; padding: 3px 6px; }
+  .tab-doc-head .btn { padding: 3px 8px; }
+  body[data-view="tablatura"] .toast { bottom: calc(76px + var(--dock-h, 0px) + env(safe-area-inset-bottom)); }
+}
