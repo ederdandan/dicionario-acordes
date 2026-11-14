@@ -14,7 +14,7 @@
 </head>
 <body>
 <main>
-  <h1>Testes dos critérios de aceite — Fases 1 a 6c</h1>
+  <h1>Testes dos critérios de aceite — Fases 1 a 7</h1>
   <p id="resumo">Rodando…</p>
   <ol id="resultados"></ol>
   <h2>Validação do <code>curated.js</code></h2>
@@ -29,6 +29,7 @@ import { parseTab, stepSeconds, TAB_EXAMPLE, eventsToGrid, gridToText, gridStart
 import { INSTRUMENTS } from './js/instruments.js';
 import { parseMusicXML, partToGrid, matchInstrument, hasTab, unzipMXL } from './js/musicxml.js';
 import { renderDiagram } from './js/diagram.js';
+import { STUDY_PROGRESSIONS, STUDY_KEYS, transposeProgression, transposeChord } from './js/progressions.js';
 import { play, setContext, activeVoices, voicesFor, ksSamples } from './js/audio.js';
 
 const results = [];
@@ -485,6 +486,25 @@ G|--2--|`, 4);
   let mxl = '';
   try { mxl = await unzipMXL(zip); } catch (err) { mxl = err.message; }
   report('unzipMXL: lê .mxl (ZIP + deflate) pelo container.xml', mxl === XML, mxl.slice(0, 80));
+}
+
+// ---------- Progressões para estudo ----------
+{
+  const bad = [];
+  for (const k of STUDY_KEYS) for (const p of STUDY_PROGRESSIONS) for (const s of transposeProgression(p, k, parseChord).chords) {
+    const c = parseChord(s);
+    if (!c || !getVoicings(c, 'violao', 'padrao', { max: 1 }).length) bad.push(`${k}:${p.id}:${s}`);
+  }
+  report(`Progressões de estudo: ${STUDY_PROGRESSIONS.length} × ${STUDY_KEYS.length} tons reconhecidas e com posição no violão`, !bad.length, bad.slice(0, 5).join(' '));
+  const pr = id => STUDY_PROGRESSIONS.find(p => p.id === id);
+  report('Transposição: andaluza em Lá = Am G F E; 4 acordes em Mib = Eb Bb Cm Ab',
+    transposeProgression(pr('andaluza'), 'A', parseChord).chords.join(' ') === 'Am G F E' && transposeProgression(pr('pop-4'), 'Eb', parseChord).chords.join(' ') === 'Eb Bb Cm Ab');
+  report('Transposição: baixo grafado pelo intervalo (C#/E# em Fá#) e tom C não muda nada',
+    transposeProgression(pr('descida-baixo'), 'F#', parseChord).chords[1] === 'C#/E#' && STUDY_PROGRESSIONS.every(p => transposeProgression(p, 'C', parseChord).chords.join() === p.chords.join())
+    && transposeChord('Dm7(b5)', 2, parseChord) === 'Em7(b5)');
+  const st = createStorage({ key: 'x-estudo', backend: { getItem: () => JSON.stringify({ prefs: { studyKey: 'Bb' } }), setItem() {} } });
+  const st2 = createStorage({ key: 'x-estudo', backend: { getItem: () => JSON.stringify({ prefs: { studyKey: 'H<' } }), setItem() {} } });
+  report('Preferência studyKey: guarda o tom e rejeita valor inválido', st.prefs().studyKey === 'Bb' && st2.prefs().studyKey === 'C');
 }
 
 // Saída na tela

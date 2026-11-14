@@ -8,6 +8,7 @@ import { renderDiagram, renderEditor, renderFretboard } from './diagram.js';
 import { play, unlock, scheduleFrets, scheduleClick, stopAll, audioNow, audioLatency, audioState } from './audio.js';
 import { parseTab, stepSeconds, TAB_EXAMPLE, TECH_NAMES, eventsToGrid, gridToText, gridStarts, tabLabels } from './tab.js';
 import { createStorage, favoriteId, formatRoute, parseRoute, splitProgression } from './storage.js';
+import { STUDY_PROGRESSIONS, STUDY_GROUPS, STUDY_KEYS, transposeProgression } from './progressions.js';
 
 const $ = id => document.getElementById(id);
 const state = {
@@ -429,8 +430,42 @@ function renderLibrary() {
       renderLibrary(); renderRehearsal();
     }, { 'aria-label': `Apagar a progressão ${p.name}` }));
     return li;
-  }) : [Object.assign(document.createElement('li'), { className: 'empty-item', textContent: 'Nenhuma progressão salva.' })]));
+  }) : [Object.assign(document.createElement('li'), { className: 'empty-item', textContent: 'Nenhuma progressão sua ainda. Crie acima ou copie uma das progressões para estudo.' })]));
+  renderStudy();
 }
+
+// ---------- Progressões para estudo (pré-definidas, em qualquer tom) ----------
+function renderStudy() {
+  const key = store.prefs().studyKey, sel = $('estudo-tom');
+  if (!sel.options.length) sel.replaceChildren(...STUDY_KEYS.map(k => Object.assign(document.createElement('option'), { value: k, textContent: `${k} (${toPt(k)})` })));
+  sel.value = STUDY_KEYS.includes(key) ? key : 'C';
+  $('estudo-lista').replaceChildren(...STUDY_GROUPS.flatMap(g => {
+    const items = STUDY_PROGRESSIONS.filter(p => p.group === g).map(p => {
+      const t = transposeProgression(p, sel.value, parseChord);
+      const name = `${p.name} em ${toPt(sel.value)}${p.minor ? ' menor' : ''}`;
+      const li = document.createElement('li');
+      const open = button('', 'btn open study-open', () => startRehearsal({ id: t.id, name, chords: t.chords }), { title: `${p.tip} Toque para ensaiar.` });
+      open.append(`▶ ${p.name} `, Object.assign(document.createElement('small'), { textContent: p.roman }),
+        Object.assign(document.createElement('span'), { className: 'study-chords', textContent: t.chords.join(' → ') }));
+      li.append(open, button('Copiar', 'btn small', () => copyProgression(name, t.chords), { 'aria-label': `Copiar ${p.name} para criar a sua` }));
+      return li;
+    });
+    const ul = Object.assign(document.createElement('ul'), { className: 'item-list study-list' });
+    ul.append(...items);
+    return [Object.assign(document.createElement('h3'), { className: 'study-group', textContent: g }), ul];
+  }));
+}
+
+/** Leva uma progressão para o formulário de "Minhas progressões" (para editar e salvar). */
+function copyProgression(name, chords) {
+  $('prog-nome').value = name;
+  $('prog-acordes').value = chords.join(', ');
+  renderDraft();
+  $('prog-msg').textContent = 'Edite à vontade e toque em “Salvar progressão”.';
+  $('prog-form').scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  $('prog-acordes').focus({ preventScroll: true });
+}
+$('estudo-tom').addEventListener('change', e => { store.setPref('studyKey', e.target.value); renderStudy(); });
 
 $('favoritar').addEventListener('click', () => {
   const f = currentFav();

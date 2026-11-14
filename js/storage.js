@@ -3,7 +3,7 @@
 
 const KEY = 'dicionario-acordes:v1';
 const FORMAT = 'dicionario-acordes-backup';
-const DEFAULT_PREFS = { theme: 'auto', leftHanded: false, saveWarn: true, seen: {} };
+const DEFAULT_PREFS = { theme: 'auto', leftHanded: false, saveWarn: true, seen: {}, studyKey: 'C' };
 
 const empty = () => ({ favorites: [], progressions: [], tabs: [], prefs: { ...DEFAULT_PREFS, seen: {} } });
 
@@ -44,6 +44,7 @@ function sanitize(raw) {
     if (['auto', 'light', 'dark'].includes(raw.prefs.theme)) out.prefs.theme = raw.prefs.theme;
     out.prefs.leftHanded = raw.prefs.leftHanded === true;
     out.prefs.saveWarn = raw.prefs.saveWarn !== false; // aviso "fica só neste aparelho" ao salvar tablatura
+    if (typeof raw.prefs.studyKey === 'string' && /^[A-G][#b]?$/.test(raw.prefs.studyKey)) out.prefs.studyKey = raw.prefs.studyKey; // tom das progressões de estudo
     // dicas de 1ª visita já vistas (tour, "deslize para trocar"…): { chave: true }
     const seen = raw.prefs.seen && typeof raw.prefs.seen === 'object' ? raw.prefs.seen : {};
     out.prefs.seen = Object.fromEntries(Object.keys(seen).filter(k => /^\w{1,24}$/.test(k) && seen[k] === true).slice(0, 32).map(k => [k, true]));

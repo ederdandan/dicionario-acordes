@@ -121,9 +121,7 @@
       <div class="lib-col">
         <h2 class="panel-title">Favoritos</h2>
         <ul id="favoritos" class="item-list"></ul>
-      </div>
-      <div class="lib-col">
-        <h2 class="panel-title">Progressões / Repertório</h2>
+        <h2 class="panel-title">Minhas progressões</h2>
         <form id="prog-form" class="prog-form">
           <label for="prog-nome" class="sr-only">Nome da progressão</label>
           <input id="prog-nome" type="text" placeholder="Nome (ex.: Samba em Ré menor)" autocomplete="off">
@@ -134,6 +132,15 @@
           <p id="prog-msg" class="form-msg" aria-live="polite"></p>
         </form>
         <ul id="progressoes" class="item-list"></ul>
+      </div>
+      <div class="lib-col study">
+        <h2 class="panel-title">Progressões para estudo</h2>
+        <div class="study-head">
+          <label for="estudo-tom">Tom</label>
+          <select id="estudo-tom"></select>
+          <p class="hint">Toque para ensaiar. “Copiar” leva a progressão para o formulário, para você criar a sua a partir dela.</p>
+        </div>
+        <div id="estudo-lista"></div>
       </div>
     </section>
 

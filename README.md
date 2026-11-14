@@ -27,6 +27,7 @@ python -m http.server 8000
 - Sintetizador Karplus-Strong: dedilhado, batida e corda isolada (clique no diagrama).
 - PWA: instalável (botão “Instalar”; no iPhone, instruções de “Adicionar à Tela de Início”) e 100% offline, áudio incluído.
 - Favoritos e progressões com modo ensaio (anterior/próximo/tocar), salvos no navegador; backup em JSON.
+- Progressões para estudo prontas (pop, brasileira, jazz/bossa, blues, clássica) em qualquer tom, para ensaiar ou copiar e criar a sua.
 - Modo canhoto, tema claro/escuro/automático e links compartilháveis (`#/violao/C7M/2`, `#/viola/rioAbaixo/G%2FB/2`).
 - Identificador reverso: monte um shape no braço (ou digite `x32010`) e veja os nomes possíveis.
 - Feito para o celular: abas inferiores, deslizar para trocar de posição e **modo palco** (tela cheia, tela sempre acesa, compatível com pedaleira Bluetooth).

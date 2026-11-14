@@ -178,7 +178,7 @@ kbd { font: .9em ui-monospace, Menlo, Consolas, monospace; border: 1px solid var
 .rehearsal-nav { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
 
 /* Favoritos, progressões, backup */
-.item-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 4px; }
+.item-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .item-list li { display: flex; align-items: center; gap: 6px; }
 .item-list li > .open { flex: 1; text-align: left; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item-list li small { color: var(--muted); }
@@ -187,6 +187,16 @@ kbd { font: .9em ui-monospace, Menlo, Consolas, monospace; border: 1px solid var
 .prog-form input, .reverse-input input {
   font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); min-width: 0;
 }
+/* Progressões para estudo */
+.study-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 4px; }
+.study-head label { font-weight: 600; }
+.study-head select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; min-height: 40px; }
+.study-head .hint { flex: 1 1 100%; margin: 4px 0 0; }
+.study-group { margin: 14px 0 6px; font-size: .95rem; }
+.study-list li { align-items: stretch; }
+.study-list li > .study-open { white-space: normal; display: grid; gap: 1px; padding: 6px 10px; }
+.study-list .study-open small { font-size: .8125rem; }
+.study-chords { font-weight: 600; font-size: .9rem; overflow-wrap: anywhere; }
 .form-msg { margin: 0; min-height: 1.2em; font-size: .85rem; color: var(--accent); }
 .backup { display: flex; flex-wrap: wrap; gap: 6px; }
 
