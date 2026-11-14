@@ -41,10 +41,12 @@
       <h2 class="panel-title">Instrumento</h2>
       <div id="instrumentos" class="seg" role="group" aria-label="Instrumento"></div>
       <div id="afinacoes" class="seg" role="group" aria-label="Afinação"></div>
-      <h2 class="panel-title">Tônica</h2>
-      <div id="tonicas" class="root-grid" role="group" aria-label="Tônicas"></div>
-      <div id="abas" class="tabs" role="tablist" aria-label="Tipos de acorde"></div>
-      <div id="tipos" class="type-grid" role="tabpanel"></div>
+      <div id="seletor-acorde">
+        <h2 class="panel-title">Tônica</h2>
+        <div id="tonicas" class="root-grid" role="group" aria-label="Tônicas"></div>
+        <div id="abas" class="tabs" role="tablist" aria-label="Tipos de acorde"></div>
+        <div id="tipos" class="type-grid" role="tabpanel"></div>
+      </div>
     </section>
 
     <section class="panel viewer" data-view="acordes" aria-label="Diagrama">
@@ -61,6 +63,12 @@
           <button id="ensaio-tocar" type="button" class="btn play-btn">▶ Tocar</button>
           <button id="ensaio-proximo" type="button" class="btn">Próximo ▶</button>
         </div>
+      </div>
+      <div class="chord-bar" role="group" aria-label="Escolher acorde">
+        <button id="barra-tonica" type="button" class="btn bar-btn" aria-haspopup="dialog" aria-controls="gaveta"></button>
+        <button id="barra-tipo" type="button" class="btn bar-btn" aria-haspopup="dialog" aria-controls="gaveta"></button>
+        <label for="barra-instrumento" class="sr-only">Instrumento e afinação</label>
+        <select id="barra-instrumento" class="bar-select"></select>
       </div>
       <div class="chord-head">
         <h2 id="acorde-simbolo" class="chord-symbol">—</h2>
@@ -236,6 +244,14 @@
     <span>Nova versão disponível</span>
     <button id="atualizar" type="button" class="btn">Atualizar</button>
   </div>
+
+  <dialog id="gaveta" class="sheet" aria-labelledby="gaveta-titulo">
+    <div class="dialog-head">
+      <h2 id="gaveta-titulo">Escolher acorde</h2>
+      <button id="gaveta-fechar" type="button" class="btn small" aria-label="Fechar">✕</button>
+    </div>
+    <div id="gaveta-corpo"></div>
+  </dialog>
 
   <dialog id="ajustes" class="ios-dialog settings" aria-labelledby="ajustes-titulo">
     <div class="dialog-head">

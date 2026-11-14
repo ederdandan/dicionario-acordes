@@ -93,6 +93,25 @@ body {
 .tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
 .type-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 
+/* Abas de tipo: esmaecido na borda quando há mais para rolar */
+.tabs.more-right { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); }
+.tabs.more-left { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 36px), transparent); }
+.tabs.more-left.more-right { -webkit-mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent); }
+
+/* Barra compacta de acorde (só no celular) e gaveta inferior */
+.chord-bar { display: none; }
+.sheet {
+  margin: auto 0 0; width: 100%; max-width: none; max-height: 85vh; overflow: auto; border: 0; border-radius: 16px 16px 0 0;
+  padding: 12px max(16px, env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: var(--surface); color: var(--fg); box-shadow: 0 -8px 32px rgb(0 0 0 / .25);
+}
+.sheet::backdrop { background: rgb(0 0 0 / .4); }
+.sheet[open] { animation: sheet-up .18s ease-out; }
+@keyframes sheet-up { from { transform: translateY(48px); opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .sheet[open] { animation: none; } }
+.sheet .dialog-head h2 { font-size: 1.05rem; }
+.sheet .type-grid .chip { min-width: 56px; }
+
 /* Visualizador */
 .chord-head { text-align: center; }
 .chord-symbol { margin: 0; font-size: 2rem; }
@@ -257,6 +276,15 @@ label.check.opt { display: flex; align-items: center; gap: 8px; cursor: pointer;
   .gear { min-height: 40px; padding: 4px 10px; }
   .search input { padding: 8px 12px; }
   body:not([data-view="acordes"]) .topbar .search { display: none; }
+
+  /* Seletor de acorde: barra acima do diagrama + gaveta (o painel lateral some) */
+  .picker { display: none !important; }
+  .chord-bar { display: flex; gap: 6px; margin: 0 0 6px; }
+  .bar-btn { flex: 0 1 auto; min-width: 64px; font-weight: 700; font-size: 1.05rem; padding: 6px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-select {
+    flex: 1 1 0; min-width: 0; font: inherit; font-size: .95rem; color: var(--fg); background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 8px; min-height: 44px;
+  }
 
   /* Posições: miniaturas + contador (setas só no desktop) */
   .viewer-nav .btn { display: none; }

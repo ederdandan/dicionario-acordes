@@ -62,7 +62,7 @@ function setRoot(root) {
 function renderRoots() {
   const box = $('tonicas');
   box.replaceChildren(...ROOT_GRID.map(r =>
-    button(r, 'chip', () => setRoot(r), {
+    button(r, 'chip', () => { setRoot(r); sheetPicked('root'); }, {
       'aria-pressed': String(pcOf(r) === pcOf(state.chord.root)), 'aria-label': `Tônica ${toPt(r)}`,
     })));
 }
@@ -71,6 +71,22 @@ function inversionsFor(root) {
   return [['', '3'], ['', '5'], ['', '7b'], ['m', '3b'], ['m', '5'], ['m', '7b'], ['7', '3'], ['7', '7b']]
     .map(([q, tok]) => parseChord(root + q + '/' + spell(root, tok)));
 }
+
+$('barra-tonica').addEventListener('click', () => openSheet('root'));
+$('barra-tipo').addEventListener('click', () => openSheet('type'));
+$('gaveta-fechar').addEventListener('click', () => $('gaveta').close());
+$('gaveta').addEventListener('click', e => { if (e.target === $('gaveta')) $('gaveta').close(); });
+$('gaveta').addEventListener('close', () => {
+  document.querySelector('.picker').append($('seletor-acorde'));
+  $(sheetFrom === 'root' ? 'barra-tonica' : 'barra-tipo').focus();
+});
+$('abas').addEventListener('scroll', tabsFade, { passive: true });
+window.addEventListener('resize', tabsFade);
+$('barra-instrumento').addEventListener('change', e => {
+  const [i, t] = e.target.value.split('/');
+  if (i !== state.instrument) setInstrument(i);
+  setTuning(t);
+});
 
 // ---------- Instrumento e afinação ----------
 function setInstrument(id) {
@@ -98,17 +114,24 @@ function renderInstruments() {
       'aria-pressed': String(tid === state.tuning), title: t.name, 'aria-label': `Afinação ${t.name}`,
     })));
   // Linha técnica só quando a afinação não é a padrão do instrumento
+  // Barra compacta do celular: um seletor só para instrumento · afinação
+  const sel = $('barra-instrumento');
+  if (!sel.options.length) sel.replaceChildren(...Object.values(INSTRUMENTS).flatMap(i => Object.entries(i.tunings).map(([tid, tt]) =>
+    Object.assign(document.createElement('option'), { value: `${i.id}/${tid}`, textContent: `${i.name}${Object.keys(i.tunings).length > 1 ? ' · ' + (tt.short || tt.name) : ''}` }))));
+  sel.value = `${state.instrument}/${state.tuning}`;
   const t = tun();
   $('afinacao-info').hidden = state.tuning === Object.keys(inst().tunings)[0];
   $('afinacao-info').textContent = `${t.name} · ${t.courses.map(c => c.notes.join('+')).join(' ')}`;
 }
 
+const TAB_SHORT = { basicos: 'Básicos', setimas: '7ª e 6ª', extensoes: '9ª/11ª/13ª', alterados: 'Alterados', inversoes: 'Inversões' };
+
 function renderTabs() {
   const tabs = $('abas');
   tabs.replaceChildren(...CATEGORIES.map(cat => {
     const sel = cat.id === state.tab;
-    const b = button(cat.name, 'tab', () => { state.tab = cat.id; renderTabs(); }, {
-      role: 'tab', id: `aba-${cat.id}`, 'aria-selected': String(sel), 'aria-controls': 'tipos', tabindex: sel ? '0' : '-1',
+    const b = button(TAB_SHORT[cat.id] || cat.name, 'tab', () => { state.tab = cat.id; renderTabs(); }, {
+      role: 'tab', id: `aba-${cat.id}`, 'aria-selected': String(sel), 'aria-controls': 'tipos', tabindex: sel ? '0' : '-1', title: cat.name,
     });
     b.addEventListener('keydown', e => {
       const i = CATEGORIES.findIndex(c => c.id === state.tab);
@@ -127,9 +150,46 @@ function renderTabs() {
   const chords = state.tab === 'inversoes'
     ? inversionsFor(root)
     : CHORD_TYPES.filter(t => t.cat === state.tab).map(t => parseChord(root + t.q));
-  panel.replaceChildren(...chords.map(c => button(c.symbol, 'chip', () => { selectChord(c); revealViewer(); }, {
+  panel.replaceChildren(...chords.map(c => button(c.symbol, 'chip', () => { selectChord(c); sheetPicked('type'); revealViewer(); }, {
     'aria-pressed': String(c.symbol === state.chord.symbol), title: chordTitle(c),
   })));
+  tabsFade();
+  // Barra compacta (celular)
+  const ch = state.chord, ty = TYPE_BY_Q[ch.quality];
+  $('barra-tonica').textContent = `${ch.root} ▾`;
+  $('barra-tonica').setAttribute('aria-label', `Tônica: ${toPt(ch.root)}. Trocar`);
+  const tname = ty.q === '' ? 'maior' : ty.name.toLowerCase();
+  $('barra-tipo').textContent = `${ch.symbol.slice(ch.root.length) || 'maior'} ▾`;
+  $('barra-tipo').setAttribute('aria-label', `Tipo: ${tname}${ch.bass ? ` com baixo em ${toPt(ch.bass)}` : ''}. Trocar`);
+}
+
+/** Esmaecido na borda das abas de tipo quando há mais para rolar. */
+function tabsFade() {
+  const t = $('abas');
+  t.classList.toggle('more-left', t.scrollLeft > 2);
+  t.classList.toggle('more-right', t.scrollLeft + t.clientWidth < t.scrollWidth - 2);
+}
+
+// ---------- Gaveta inferior (celular): tônica + tipos ----------
+let sheetFrom = null;
+function openSheet(from) {
+  const sh = $('gaveta');
+  if (sh.open) return;
+  sheetFrom = from;
+  $('gaveta-corpo').append($('seletor-acorde')); // move os mesmos controles do painel lateral
+  sh.showModal();
+  tabsFade();
+  const target = from === 'root' ? $('tonicas').querySelector('[aria-pressed="true"]')
+    : $('tipos').querySelector('[aria-pressed="true"]') || $(`aba-${state.tab}`);
+  target?.focus();
+  target?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+function sheetPicked(what) {
+  const sh = $('gaveta');
+  if (!sh.open) return;
+  // Escolher o tipo sempre fecha; a tônica só fecha se a gaveta foi aberta por ela
+  if (what === 'type' || sheetFrom === 'root') return sh.close();
+  $('tonicas').querySelector('[aria-pressed="true"]')?.focus(); // renderRoots recriou os botões
 }
 
 function renderViewer() {
@@ -595,11 +655,12 @@ function showView(v) {
 }
 document.querySelectorAll('.bottom-nav [data-go]').forEach(b => b.addEventListener('click', () => showView(b.dataset.go)));
 
-/** No celular o diagrama fica acima do seletor: depois de escolher, volta até ele. */
+/** No celular, se a página rolou para além do diagrama (ex.: análise), volta até ele. */
 function revealViewer() {
   if (!mobile()) return;
-  const top = document.querySelector('.viewer').getBoundingClientRect().top + window.scrollY - 8;
-  if (Math.abs(window.scrollY - top) > 40) window.scrollTo({ top, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  const r = document.querySelector('.viewer').getBoundingClientRect();
+  if (r.top >= 0) return; // o diagrama já está à vista: não mexe na rolagem
+  window.scrollTo({ top: r.top + window.scrollY - 8, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
 }
 
 let notifyTimer = 0;
@@ -1232,7 +1293,7 @@ document.addEventListener('visibilitychange', () => {
 $('proxima').addEventListener('click', () => move(1));
 document.addEventListener('keydown', e => {
   if (stageOpen()) return stageKeys(e);
-  if (e.target.closest('input, textarea, select, [role="tab"], .grid-wrap')) return;
+  if (e.target.closest('input, textarea, select, [role="tab"], .grid-wrap, dialog')) return;
   if (e.key === 'ArrowLeft') move(-1);
   if (e.key === 'ArrowRight') move(1);
 });
