@@ -82,16 +82,51 @@ function build(c) {
 /** Para testes: usa um contexto externo (p.ex. OfflineAudioContext). */
 export function setContext(c) { active.forEach(v => v.src.disconnect()); active.clear(); byCourse.clear(); build(c); }
 
-/** Cria/retoma o AudioContext. Chamar dentro de um gesto do usuário. */
+// iPhone/iPad: por padrão o Web Audio fica mudo com a chave de silencioso ligada.
+// Safari 16.4+: audioSession 'playback' toca como player de mídia (ignora a chave).
+// Versões antigas: um <audio> silencioso em loop, iniciado num gesto, muda a sessão para 'playback'.
+const IOS = typeof navigator !== 'undefined' &&
+  (/iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+let silentEl = null;
+
+function silentWavUrl() {
+  const n = 4410, buf = new ArrayBuffer(44 + n), d = new DataView(buf); // 0,1 s, 44,1 kHz, 8 bits mono
+  const str = (o, t) => [...t].forEach((c, i) => d.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF'); d.setUint32(4, 36 + n, true); str(8, 'WAVEfmt '); d.setUint32(16, 16, true);
+  d.setUint16(20, 1, true); d.setUint16(22, 1, true); d.setUint32(24, 44100, true); d.setUint32(28, 44100, true);
+  d.setUint16(32, 1, true); d.setUint16(34, 8, true); str(36, 'data'); d.setUint32(40, n, true);
+  for (let i = 0; i < n; i++) d.setUint8(44 + i, 128);
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+
+function iosPlaybackSession() {
+  try {
+    if (navigator.audioSession) { navigator.audioSession.type = 'playback'; return; }
+  } catch { /* ignora */ }
+  if (!IOS || silentEl) return;
+  silentEl = document.createElement('audio');
+  silentEl.setAttribute('x-webkit-airplay', 'deny');
+  silentEl.preload = 'auto';
+  silentEl.loop = true;
+  silentEl.src = silentWavUrl();
+  silentEl.play().catch(() => { silentEl = null; }); // tenta de novo no próximo gesto
+}
+
+/** Cria/retoma o AudioContext. Chamar dentro de um gesto do usuário (click/touchend/keydown). */
 export function unlock() {
+  iosPlaybackSession();
   if (!ctx) {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
     build(new AC({ latencyHint: 'interactive' }));
   }
-  if (ctx.state === 'suspended' && ctx.resume) ctx.resume().catch(() => {});
+  // 'suspended' (criado sem gesto) ou 'interrupted' (iOS após ligação/segundo plano)
+  if (ctx.state !== 'running' && ctx.state !== 'closed' && ctx.resume) ctx.resume().catch(() => {});
   return ctx;
 }
+
+/** Estado do áudio, para a interface avisar quando não há som. */
+export const audioState = () => ctx?.state ?? 'none';
 
 export const activeVoices = () => active.size;
 

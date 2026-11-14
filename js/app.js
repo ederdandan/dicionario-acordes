@@ -540,11 +540,17 @@ function setupPWA() {
 $('anterior').addEventListener('click', () => move(-1));
 $('tocar-dedilhar').addEventListener('click', () => playCurrent('dedilhar'));
 $('tocar-batida').addEventListener('click', () => playCurrent('batida'));
-// Retoma o AudioContext já no primeiro gesto (iOS/Safari exigem gesto do usuário)
-for (const ev of ['pointerdown', 'keydown']) document.addEventListener(ev, function first() {
-  document.removeEventListener(ev, first);
-  unlock();
-}, { passive: true });
+// Desbloqueia o áudio no primeiro gesto VÁLIDO. Em tela de toque, pointerdown/touchstart não contam
+// como ativação do usuário (Chrome/Safari): o contexto nasceria suspenso. Use touchend/click/keydown.
+const UNLOCK_EVENTS = ['touchend', 'click', 'keydown'];
+function firstGesture() {
+  if (unlock()?.state === 'running') UNLOCK_EVENTS.forEach(ev => document.removeEventListener(ev, firstGesture, true));
+}
+UNLOCK_EVENTS.forEach(ev => document.addEventListener(ev, firstGesture, { capture: true, passive: true }));
+// Ao voltar do segundo plano o iOS deixa o contexto 'interrupted': o próximo toque o retoma.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') UNLOCK_EVENTS.forEach(ev => document.addEventListener(ev, firstGesture, { capture: true, passive: true }));
+});
 $('proxima').addEventListener('click', () => move(1));
 document.addEventListener('keydown', e => {
   if (e.target.closest('input, [role="tab"]')) return;
