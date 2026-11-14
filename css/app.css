@@ -73,6 +73,10 @@ body {
 .btn:disabled { opacity: .4; cursor: default; }
 .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
 
+.seg { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.seg:empty { display: none; }
+.seg .chip { flex: 1 1 auto; }
+.tuning-info { margin: 2px 0 0; font-size: .8rem; color: var(--muted); }
 .root-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 14px; }
 .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
 .tab {

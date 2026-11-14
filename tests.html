@@ -14,7 +14,7 @@
 </head>
 <body>
 <main>
-  <h1>Testes dos critérios de aceite — Fase 1</h1>
+  <h1>Testes dos critérios de aceite — Fases 1 e 2</h1>
   <p id="resumo">Rodando…</p>
   <ol id="resultados"></ol>
   <h2>Validação do <code>curated.js</code></h2>
@@ -25,6 +25,7 @@ import { parseChord } from './js/parser.js';
 import { chordNotes, CHORD_TYPES, ROOT_GRID, noteToMidi } from './js/theory.js';
 import { getVoicings, checkShape, curatedFor, curatedReport } from './js/voicings.js';
 import { INSTRUMENTS } from './js/instruments.js';
+import { renderDiagram } from './js/diagram.js';
 
 const results = [];
 const report = (name, ok, detail = '') => {
@@ -102,9 +103,71 @@ for (const [sym, exp] of Object.entries(FIRST)) {
   report(`C13: 3ª, 7b e 13ª nas ${vs.length} posições`, vs.length > 0 && !bad.length, bad.map(fmt).join(', '));
 }
 
+// ---------- Fase 2: Viola Caipira e Ukulele ----------
+const ALL = Object.values(INSTRUMENTS).flatMap(i => Object.keys(i.tunings).map(t => [i.id, t]));
+
+// 8) Todos os tipos × 12 tônicas em cada instrumento/afinação
+for (const [i, t] of ALL) {
+  if (i === 'violao') continue; // já coberto no teste 1
+  const t0 = performance.now();
+  const sem = [];
+  for (const r of ROOT_GRID) for (const ty of CHORD_TYPES) {
+    if (!getVoicings(parseChord(r + ty.q), i, t).length) sem.push(r + ty.q);
+  }
+  report(`${INSTRUMENTS[i].name} / ${INSTRUMENTS[i].tunings[t].name}: todos os tipos × 12 tônicas têm ≥ 1 posição`, sem.length === 0,
+    `${sem.join(', ')} (${(performance.now() - t0).toFixed(0)} ms)`);
+}
+
+// 9) Primeira posição na viola e no ukulele
+const FIRST2 = [
+  ['viola', 'cebolaoMi', 'E', '00000'], ['viola', 'cebolaoRe', 'D', '00000'], ['viola', 'rioAbaixo', 'G', '00000'],
+  ['ukulele', 'highG', 'C', '0003'], ['ukulele', 'highG', 'G', '0232'], ['ukulele', 'highG', 'Am', '2000'],
+  ['ukulele', 'highG', 'F', '2010'], ['ukulele', 'highG', 'G7', '0212'],
+];
+for (const [i, t, sym, exp] of FIRST2) {
+  const v = getVoicings(parseChord(sym), i, t)[0];
+  report(`${INSTRUMENTS[i].tunings[t].name}: 1ª posição de ${sym} = ${exp}`, !!v && fmt(v) === exp, v ? `${fmt(v)} (${v.label})` : 'nenhuma');
+}
+
+// 10) Regras de baixo
+const crs = (i, t) => INSTRUMENTS[i].tunings[t].courses.map(c => ({ pc: noteToMidi(c.notes[0]) % 12 }));
+const firstPc = (v, cs) => { const k = v.frets.findIndex(f => f >= 0); return (cs[k].pc + v.frets[k]) % 12; };
+{
+  const cs = crs('ukulele', 'highG');
+  const vs = getVoicings(parseChord('C/E'), 'ukulele', 'highG');
+  const bad = vs.filter(v => firstPc(v, cs) !== 4);
+  report(`Ukulele C/E: Mi na corda mais grossa tocada nas ${vs.length} posições`, vs.length > 0 && !bad.length, bad.map(fmt).join(', '));
+  const c13 = getVoicings(parseChord('C13'), 'ukulele', 'highG');
+  const badC13 = c13.filter(v => { const p = new Set(v.frets.map((f, k) => (f < 0 ? -1 : (cs[k].pc + f) % 12))); return ![4, 10, 9].every(x => p.has(x)); });
+  report(`Ukulele C13: 3ª, 7b e 13ª nas ${c13.length} posições`, c13.length > 0 && !badC13.length, badC13.map(fmt).join(', '));
+}
+{
+  const cs = crs('viola', 'cebolaoMi');
+  const vs = getVoicings(parseChord('E/G#'), 'viola', 'cebolaoMi');
+  const bad = vs.filter(v => firstPc(v, cs) !== 8);
+  report(`Viola (Cebolão Mi) E/G#: Sol# no par mais grave tocado nas ${vs.length} posições`, vs.length > 0 && !bad.length, bad.map(fmt).join(', '));
+  const am = getVoicings(parseChord('Am'), 'viola', 'cebolaoMi');
+  const badAm = am.filter(v => ![9, 4].includes(firstPc(v, cs)));
+  report(`Viola Am: baixo na tônica ou na 5ª (sem barra) nas ${am.length} posições`, am.length > 0 && !badAm.length, badAm.map(fmt).join(', '));
+}
+
+// 11) Troca de instrumento/afinação recalcula diagrama, legenda e posições
+{
+  const c = parseChord('G');
+  const a = getVoicings(c, 'viola', 'cebolaoMi'), b = getVoicings(c, 'viola', 'rioAbaixo'), u = getVoicings(c, 'ukulele', 'highG');
+  report('Posições de G mudam entre Cebolão Mi, Rio Abaixo e Ukulele', fmt(a[0]) !== fmt(b[0]) && u[0].frets.length === 4 && a[0].frets.length === 5,
+    `${fmt(a[0])} · ${fmt(b[0])} · ${fmt(u[0])}`);
+  const svgV = renderDiagram(b[0], INSTRUMENTS.viola, INSTRUMENTS.viola.tunings.rioAbaixo);
+  const txt = [...svgV.querySelectorAll('text')].map(t => t.textContent);
+  report('Diagrama da viola: legenda de pares (5º…1º, oitavado/uníssono)', ['5º', '1º', '8ª', '='].every(x => txt.includes(x)) && svgV.getAttribute('aria-label').includes('Rio Abaixo'), svgV.getAttribute('aria-label'));
+  const svgU = renderDiagram(u[0], INSTRUMENTS.ukulele, INSTRUMENTS.ukulele.tunings.highG);
+  const utxt = [...svgU.querySelectorAll('text')].map(t => t.textContent);
+  report('Diagrama do ukulele: 4 colunas, sem legenda de pares', u[0].courseNotes.length === 4 && !utxt.includes('8ª'), svgU.getAttribute('aria-label'));
+}
+
 // 7) Validação automática do curated.js
 {
-  curatedFor('violao', 'padrao');
+  for (const [i, t] of ALL) curatedFor(i, t);
   const c = parseChord('C'), n = chordNotes(c);
   const tCourses = courses;
   const bads = { 'nota estranha (x32210)': [-1, 3, 2, 2, 1, 0], 'baixo errado (032010)': [0, 3, 2, 0, 1, 0], 'abertura > 4 (x3201 8)': [-1, 3, 2, 0, 1, 8], 'falta a 3ª (x3x01x)': [-1, 3, -1, 0, 1, -1] };

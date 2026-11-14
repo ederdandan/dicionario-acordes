@@ -62,6 +62,33 @@ function inversionsFor(root) {
     .map(([q, tok]) => parseChord(root + q + '/' + spell(root, tok)));
 }
 
+// ---------- Instrumento e afinação ----------
+function setInstrument(id) {
+  if (id === state.instrument) return;
+  state.instrument = id;
+  state.tuning = Object.keys(INSTRUMENTS[id].tunings)[0];
+  selectChord(state.chord);
+}
+
+function setTuning(tid) {
+  if (tid === state.tuning) return;
+  state.tuning = tid;
+  selectChord(state.chord);
+}
+
+function renderInstruments() {
+  $('instrumentos').replaceChildren(...Object.values(INSTRUMENTS).map(i =>
+    button(i.name, 'chip', () => setInstrument(i.id), { 'aria-pressed': String(i.id === state.instrument) })));
+  const tunings = Object.entries(inst().tunings);
+  // Seletor rápido só quando há mais de uma afinação
+  $('afinacoes').replaceChildren(...(tunings.length > 1 ? tunings : []).map(([tid, t]) =>
+    button(t.short || t.name, 'chip', () => setTuning(tid), {
+      'aria-pressed': String(tid === state.tuning), title: t.name, 'aria-label': `Afinação ${t.name}`,
+    })));
+  const t = tun();
+  $('afinacao-info').textContent = `${inst().name} · ${t.name} · ${t.courses.map(c => c.notes.join('+')).join(' ')}`;
+}
+
 function renderTabs() {
   const tabs = $('abas');
   tabs.replaceChildren(...CATEGORIES.map(cat => {
@@ -98,7 +125,7 @@ function renderViewer() {
   const v = voicings[idx];
   const main = $('diagrama');
   if (!v) {
-    main.replaceChildren(Object.assign(document.createElement('p'), { className: 'empty', textContent: 'Nenhuma posição encontrada.' }));
+    main.replaceChildren(Object.assign(document.createElement('p'), { className: 'empty', textContent: 'Sem posição viável para este acorde neste instrumento/afinação.' }));
     $('posicao-rotulo').textContent = '';
   } else {
     main.replaceChildren(renderDiagram(v, inst(), tun()));
@@ -136,6 +163,7 @@ function renderAnalysis() {
 }
 
 function render() {
+  renderInstruments();
   renderRoots();
   renderTabs();
   renderViewer();

@@ -12,10 +12,28 @@ const MAX_FINGERS = 4;
 function courseInfo(instrumentId, tuningId) {
   const tuning = INSTRUMENTS[instrumentId]?.tunings[tuningId];
   if (!tuning) throw new Error(`Afinação desconhecida: ${instrumentId}/${tuningId}`);
-  return tuning.courses.map(c => {
+  const courses = tuning.courses.map(c => {
     const midis = c.notes.map(noteToMidi);
     return { pc: midis[0] % 12, low: Math.min(...midis) };
   });
+  courses.bassRule = INSTRUMENTS[instrumentId].bass || 'pitch';
+  courses.muteCost = INSTRUMENTS[instrumentId].muteCost ?? 0.5;
+  return courses;
+}
+
+/**
+ * Regra do baixo (ver instruments.js). firstPc = nota da corda/par mais grave tocado;
+ * lowPc = nota mais grave que soa.
+ */
+function bassOk(rule, notes, firstPc, lowPc) {
+  const slash = notes.bassPc !== notes.rootPc;
+  if (rule === 'free') return !slash || firstPc === notes.bassPc;
+  if (rule === 'course') {
+    if (firstPc === notes.bassPc) return true;
+    const i = notes.formula.indexOf('5');
+    return !slash && i >= 0 && firstPc === notes.pcs[i];
+  }
+  return lowPc === notes.bassPc;
 }
 
 /**
@@ -77,7 +95,7 @@ export function checkShape(frets, notes, courses, { rootless = false } = {}) {
   }
   if (notes.alt && notes.alt.pcs.filter(pc => present.has(pc)).length < notes.alt.min) return 'faltam alterações';
   const lowest = played.reduce((a, b) => (b.midi < a.midi ? b : a));
-  if (!rootless && lowest.pc !== notes.bassPc) return 'baixo incorreto';
+  if (!rootless && !bassOk(courses.bassRule, notes, played[0].pc, lowest.pc)) return 'baixo incorreto';
   const fr = frets.filter(f => f > 0);
   if (fr.length && Math.max(...fr) - Math.min(...fr) > MAX_SPAN) return 'abertura maior que 4 casas';
   return null;
@@ -105,7 +123,10 @@ function buildVoicing(frets, notes, courses, fingersGiven) {
   let midMutes = 0;
   for (let i = playedIdx[0]; i <= playedIdx[playedIdx.length - 1]; i++) if (frets[i] < 0) midMutes++;
   const span = fr.length ? maxF - minF : 0;
-  const cost = span + minF + 10 * midMutes + count - opens + 0.5 * muted;
+  // Viola: 5ª no baixo é aceita em acordes sem barra, mas a tônica no baixo tem preferência.
+  const firstPc = (courses[playedIdx[0]].pc + frets[playedIdx[0]]) % 12;
+  const fifthBass = courses.bassRule === 'course' && firstPc !== notes.bassPc ? 1 : 0;
+  const cost = span + minF + 10 * midMutes + count - opens + (courses.muteCost ?? 0.5) * muted + fifthBass;
   const courseNotes = frets.map((f, i) => (f < 0 ? null : notes.nameOf((courses[i].pc + f) % 12)));
   const label = barres.length
     ? `Pestana na ${barres[0].fret}ª`
@@ -137,12 +158,12 @@ function generate(notes, courses, { rootless = false } = {}) {
       for (let f = w; f <= w + MAX_SPAN; f++) if (inChord[(c.pc + f) % 12]) o.push(f);
       return o;
     });
-    const rec = (i, mask, nFretted, hasW, played, lowMidi, lowPc) => {
+    const rec = (i, mask, nFretted, hasW, played, lowMidi, lowPc, firstPc) => {
       if (nFretted > MAX_FINGERS + 2) return; // poda grosseira (pestana pode reduzir)
       if (i === n) {
         if ((mask & reqMask) !== reqMask || played < 3) return;
         if (nFretted ? !hasW : w !== 1) return;
-        if (!rootless && lowPc !== notes.bassPc) return;
+        if (!rootless && !bassOk(courses.bassRule, notes, firstPc, lowPc)) return;
         if (altMask && bits(mask & altMask) < notes.alt.min) return;
         const { count } = assignFingers(frets);
         if (count > MAX_FINGERS) return;
@@ -152,14 +173,14 @@ function generate(notes, courses, { rootless = false } = {}) {
       const c = courses[i];
       for (const f of options[i]) {
         frets[i] = f;
-        if (f < 0) { rec(i + 1, mask, nFretted, hasW, played, lowMidi, lowPc); continue; }
+        if (f < 0) { rec(i + 1, mask, nFretted, hasW, played, lowMidi, lowPc, firstPc); continue; }
         const pc = (c.pc + f) % 12, midi = c.low + f;
         const low = midi < lowMidi;
         rec(i + 1, mask | (1 << pc), nFretted + (f > 0), hasW || f === w, played + 1,
-          low ? midi : lowMidi, low ? pc : lowPc);
+          low ? midi : lowMidi, low ? pc : lowPc, played ? firstPc : pc);
       }
     };
-    rec(0, 0, 0, false, 0, Infinity, -1);
+    rec(0, 0, 0, false, 0, Infinity, -1, -1);
   }
   return found;
 }

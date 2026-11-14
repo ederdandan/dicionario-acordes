@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Dicionário de acordes para violão: busca por cifra, diagramas e análise de notas.">
+  <meta name="description" content="Dicionário de acordes para violão, viola caipira e ukulele: busca por cifra, diagramas e análise de notas.">
   <title>Dicionário de Acordes</title>
   <link rel="stylesheet" href="./css/app.css">
 </head>
@@ -22,6 +22,9 @@
 
   <main class="layout">
     <section class="panel picker" aria-label="Escolha do acorde">
+      <h2 class="panel-title">Instrumento</h2>
+      <div id="instrumentos" class="seg" role="group" aria-label="Instrumento"></div>
+      <div id="afinacoes" class="seg" role="group" aria-label="Afinação"></div>
       <h2 class="panel-title">Tônica</h2>
       <div id="tonicas" class="root-grid" role="group" aria-label="Tônicas"></div>
       <div id="abas" class="tabs" role="tablist" aria-label="Tipos de acorde"></div>
@@ -32,6 +35,7 @@
       <div class="chord-head">
         <h2 id="acorde-simbolo" class="chord-symbol">—</h2>
         <p id="acorde-nome" class="chord-name"></p>
+        <p id="afinacao-info" class="tuning-info"></p>
       </div>
       <div id="diagrama" class="diagram-main"></div>
       <p id="posicao-rotulo" class="voicing-label"></p>

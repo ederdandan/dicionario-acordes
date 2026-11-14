@@ -17,7 +17,7 @@ export function describeVoicing(voicing, tuning) {
     const d = voicing.fingers[i] ? `, dedo ${voicing.fingers[i]}` : '';
     return `${c} casa ${f}${d} (${voicing.courseNotes[i]})`;
   });
-  return `Diagrama ${voicing.symbol || ''} — ${voicing.label}: ${parts.join('; ')}.`;
+  return `Diagrama ${voicing.symbol || ''} (${tuning.name}) — ${voicing.label}: ${parts.join('; ')}.`;
 }
 
 /**
@@ -30,7 +30,7 @@ export function renderDiagram(voicing, instrument, tuning, { leftHanded = false,
   const rows = voicing.rows || 4;
   const gridW = (n - 1) * colW;
   const showPairs = instrument.strings > tuning.courses.length;
-  const legendH = compact ? 4 : showPairs ? 44 : 28;
+  const legendH = compact ? 4 : showPairs ? 58 : 28;
   const W = padL + gridW + padR;
   const H = top + rows * rowH + legendH + 6;
   const x = i => padL + (leftHanded ? n - 1 - i : i) * colW;
@@ -93,13 +93,20 @@ export function renderDiagram(voicing, instrument, tuning, { leftHanded = false,
       }, String(voicing.fingers[i])));
     }
   });
-  // Legenda: nota de cada corda/par (e número do par na viola)
+  // Legenda: nota de cada corda/par; na viola, número do par e tipo (8ª = oitavado, = uníssono)
   if (!compact) {
     const ly = top + rows * rowH + 18;
+    if (showPairs) {
+      svg.append(el('text', { x: padL - 16, y: ly + 15, 'text-anchor': 'end', 'font-size': 8.5, fill: grid }, 'par'));
+    }
     voicing.courseNotes.forEach((nm, i) => {
       svg.append(el('text', { x: x(i), y: ly, 'text-anchor': 'middle', 'font-size': 10.5, fill: fg }, nm || ''));
       if (showPairs) {
-        svg.append(el('text', { x: x(i), y: ly + 15, 'text-anchor': 'middle', 'font-size': 9.5, fill: grid }, tuning.courses[i].label));
+        const c = tuning.courses[i];
+        const octave = new Set(c.notes).size > 1;
+        svg.append(el('text', { x: x(i), y: ly + 15, 'text-anchor': 'middle', 'font-size': 9.5, fill: grid }, c.label.split(' ')[0]));
+        svg.append(el('text', { x: x(i), y: ly + 28, 'text-anchor': 'middle', 'font-size': 8.5, fill: grid },
+          octave ? '8ª' : '='));
       }
     });
   }
