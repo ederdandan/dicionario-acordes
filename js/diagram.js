@@ -133,3 +133,51 @@ export function renderDiagram(voicing, instrument, tuning, { leftHanded = false,
   }
   return svg;
 }
+
+/**
+ * Braço vazio editável (identificador reverso). frets: casas por corda (-1 = muda).
+ * Clicar no marcador acima da corda alterna muda ↔ solta; clicar numa casa pressiona
+ * (de novo na mesma casa → solta). Casas fora da janela continuam valendo e aparecem na legenda.
+ */
+export function renderEditor(frets, instrument, tuning, { baseFret = 1, rows = 5, leftHanded = false, onChange } = {}) {
+  const n = frets.length;
+  const colW = 34, rowH = 30, padL = 36, padR = 18, top = 40;
+  const gridW = (n - 1) * colW;
+  const W = padL + gridW + padR, H = top + rows * rowH + 40;
+  const x = i => padL + (leftHanded ? n - 1 - i : i) * colW;
+  const fg = 'var(--dg-fg, #111)', grid = 'var(--dg-grid, #555)';
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, class: 'diagram editor', role: 'group', 'aria-label': `Braço do ${instrument.name} para identificar acorde` });
+  const set = (i, f) => { const next = frets.slice(); next[i] = f; onChange?.(next); };
+  const button = (attrs, label, fire) => {
+    const r = el('rect', { ...attrs, fill: 'transparent', class: 'hit', role: 'button', tabindex: 0, 'aria-label': label });
+    r.addEventListener('click', fire);
+    r.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fire(); } });
+    return r;
+  };
+
+  for (let r = 0; r <= rows; r++) svg.append(el('line', { x1: padL, x2: padL + gridW, y1: top + r * rowH, y2: top + r * rowH, stroke: grid, 'stroke-width': 1.2 }));
+  for (let i = 0; i < n; i++) svg.append(el('line', { x1: x(i), x2: x(i), y1: top, y2: top + rows * rowH, stroke: grid, 'stroke-width': 1.2 }));
+  if (baseFret === 1) svg.append(el('rect', { x: padL - 2, y: top - 6, width: gridW + 4, height: 7, rx: 1.5, fill: fg }));
+  else svg.append(el('text', { x: padL - 10, y: top + rowH / 2 + 4, 'text-anchor': 'end', 'font-size': 12, 'font-weight': 700, fill: fg }, `${baseFret}ª`));
+
+  frets.forEach((f, i) => {
+    const c = tuning.courses[i].label;
+    const cy = top - 20;
+    if (f <= 0) {
+      svg.append(el('circle', { cx: x(i), cy, r: 7, fill: 'none', stroke: fg, 'stroke-width': 1.6 }));
+      if (f < 0) svg.append(el('path', { d: `M${x(i) - 4} ${cy - 4}L${x(i) + 4} ${cy + 4}M${x(i) + 4} ${cy - 4}L${x(i) - 4} ${cy + 4}`, stroke: fg, 'stroke-width': 1.6, 'stroke-linecap': 'round' }));
+    }
+    const r = f - baseFret + 1;
+    if (f > 0 && r >= 1 && r <= rows) svg.append(el('circle', { cx: x(i), cy: top + (r - 0.5) * rowH, r: 10, fill: fg }));
+    svg.append(el('text', { x: x(i), y: top + rows * rowH + 18, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700, fill: fg }, f < 0 ? 'x' : String(f)));
+    svg.append(el('text', { x: x(i), y: top + rows * rowH + 32, 'text-anchor': 'middle', 'font-size': 9, fill: grid }, c.split(' ')[0]));
+    svg.append(button({ x: x(i) - colW / 2, y: top - 34, width: colW, height: 28 },
+      `${c}: ${f < 0 ? 'muda' : f === 0 ? 'solta' : `casa ${f}`} — alternar muda/solta`, () => set(i, f < 0 ? 0 : -1)));
+    for (let k = 1; k <= rows; k++) {
+      const fret = baseFret + k - 1;
+      svg.append(button({ x: x(i) - colW / 2, y: top + (k - 1) * rowH, width: colW, height: rowH },
+        `${c}, casa ${fret}${f === fret ? ' (pressionada)' : ''}`, () => set(i, f === fret ? 0 : fret)));
+    }
+  });
+  return svg;
+}

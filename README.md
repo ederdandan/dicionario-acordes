@@ -1,6 +1,6 @@
 # Dicionário de Acordes
 
-Dicionário de acordes para violão (viola caipira e ukulele nas próximas fases), feito em HTML/CSS/JS puro com ES Modules, sem build, sem CDN e sem backend. Pronto para GitHub Pages.
+Dicionário de acordes para violão, viola caipira e ukulele, feito em HTML/CSS/JS puro com ES Modules, sem build, sem CDN e sem backend. É um PWA instalável que funciona offline. Pronto para GitHub Pages (inclusive em subdiretório).
 
 ## Como rodar
 
@@ -21,6 +21,21 @@ python -m http.server 8000
 - Diagramas SVG acessíveis e responsivos, com tema claro/escuro via variáveis CSS.
 - Painel de análise: notas, fórmula e tabela corda a corda.
 
+## Recursos (Fases 2 a 5)
+
+- Viola caipira (Cebolão em Mi/Ré, Rio Abaixo, Boiadeira) e ukulele High-G.
+- Sintetizador Karplus-Strong: dedilhado, batida e corda isolada (clique no diagrama).
+- PWA: instalável (botão “Instalar”; no iPhone, instruções de “Adicionar à Tela de Início”) e 100% offline, áudio incluído.
+- Favoritos e progressões com modo ensaio (anterior/próximo/tocar), salvos no navegador; backup em JSON.
+- Modo canhoto, tema claro/escuro/automático e links compartilháveis (`#/violao/C7M/2`, `#/viola/rioAbaixo/G%2FB/2`).
+- Identificador reverso: monte um shape no braço (ou digite `x32010`) e veja os nomes possíveis.
+
+## Publicando uma nova versão
+
+O service worker serve os arquivos do cache. Ao alterar qualquer arquivo, **incremente `CACHE_NAME` em `sw.js`** (`dicionario-acordes-v2`, `-v3`…): quem já tem o app verá “Nova versão disponível — Atualizar”. Se criar um arquivo novo, inclua-o na lista `ASSETS` do `sw.js`.
+
+Os ícones são gerados por `node tools/gen-icons.mjs`.
+
 ## Estrutura
 
 | Arquivo | Papel |
@@ -31,6 +46,9 @@ python -m http.server 8000
 | `js/voicings.js` | Gerador + ranking + validação da base curada |
 | `js/curated.js` | Shapes tradicionais (`{ f: "x-3-2-0-1-0", d: "0-3-2-0-1-0" }`) |
 | `js/diagram.js` | Renderização SVG |
-| `js/app.js` | Interface |
+| `js/audio.js` | Sintetizador (Web Audio) |
+| `js/storage.js` | Favoritos, progressões, preferências, backup e rota da URL |
+| `js/app.js` | Interface, PWA (instalação/atualização) |
+| `sw.js`, `manifest.json`, `icons/` | PWA |
 
 A especificação completa está em `spec-dicionario-acordes.md`.

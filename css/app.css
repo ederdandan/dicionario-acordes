@@ -60,8 +60,10 @@ body {
 @media (min-width: 860px) {
   .topbar { flex-direction: row; align-items: center; justify-content: space-between; }
   .search { width: 420px; }
-  .layout { grid-template-columns: 320px 1fr; grid-template-areas: "picker viewer" "analysis viewer"; align-items: start; }
+  .layout { grid-template-columns: 320px 1fr; grid-template-areas: "picker viewer" "analysis viewer" "library reverse"; align-items: start; }
   .picker { grid-area: picker; } .viewer { grid-area: viewer; } .analysis { grid-area: analysis; }
+  .library { grid-area: library; } .reverse { grid-area: reverse; }
+  .brand-row { flex: 1; }
 }
 
 /* Botões */
@@ -117,3 +119,54 @@ body {
 .string-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
 .string-table th, .string-table td { padding: 5px 6px; text-align: center; border-bottom: 1px solid var(--border); }
 .string-table th { color: var(--muted); font-weight: 500; }
+
+/* Topo: ações */
+.brand-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.top-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn.small { min-height: 30px; padding: 3px 9px; font-size: .85rem; }
+.btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+[hidden] { display: none !important; }
+
+/* Ensaio */
+.rehearsal { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: var(--radius); padding: 8px 10px; margin-bottom: 10px; }
+.rehearsal-head { display: flex; align-items: center; gap: 10px; }
+.rehearsal-head strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rehearsal-chords { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+.rehearsal-nav { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+
+/* Favoritos, progressões, backup */
+.item-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 4px; }
+.item-list li { display: flex; align-items: center; gap: 6px; }
+.item-list li > .open { flex: 1; text-align: left; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-list li small { color: var(--muted); }
+.item-list .empty-item { color: var(--muted); font-size: .9rem; }
+.prog-form { display: grid; gap: 6px; margin-bottom: 8px; }
+.prog-form input, .reverse-input input {
+  font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); min-width: 0;
+}
+.form-msg { margin: 0; min-height: 1.2em; font-size: .85rem; color: var(--accent); }
+.backup { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Identificador reverso */
+.hint { margin: 0 0 8px; font-size: .85rem; color: var(--muted); }
+.reverse-input { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.reverse-input input { flex: 1; font-family: ui-monospace, monospace; }
+.diagram-editor { display: flex; justify-content: center; }
+.diagram-editor svg { width: min(100%, 300px); height: auto; }
+.diagram.editor .hit { cursor: pointer; outline: none; }
+.diagram.editor .hit:hover, .diagram.editor .hit:focus-visible { fill: var(--accent-soft); fill-opacity: .6; }
+.reverse-results { margin: 10px 0 0; padding-left: 1.4em; display: grid; gap: 4px; }
+.reverse-results li small { color: var(--muted); margin-left: 6px; }
+
+/* Aviso de atualização e instalação no iOS */
+.toast {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: 12px;
+  background: var(--fg); color: var(--bg); padding: 10px 12px 10px 16px; border-radius: var(--radius); box-shadow: 0 8px 24px rgb(0 0 0 / .25);
+  max-width: calc(100% - 32px);
+}
+.toast .btn { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+.ios-dialog { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); max-width: 360px; }
+.ios-dialog::backdrop { background: rgb(0 0 0 / .4); }
+.ios-dialog h2 { margin-top: 0; font-size: 1.1rem; }
+.ios-dialog li { margin: 6px 0; }
+.ios-icon { display: inline-block; border: 1px solid var(--border); border-radius: 6px; padding: 0 6px; }

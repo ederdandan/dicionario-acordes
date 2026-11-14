@@ -4,12 +4,34 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Dicionário de acordes para violão, viola caipira e ukulele: busca por cifra, diagramas e análise de notas.">
+  <meta name="theme-color" content="#b5532a">
   <title>Dicionário de Acordes</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Acordes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <script>
+    // Aplica o tema salvo antes da primeira pintura (evita piscar)
+    try {
+      var t = JSON.parse(localStorage.getItem('dicionario-acordes:v1') || '{}').prefs;
+      if (t && (t.theme === 'light' || t.theme === 'dark')) document.documentElement.dataset.theme = t.theme;
+    } catch (e) {}
+  </script>
   <link rel="stylesheet" href="./css/app.css">
 </head>
 <body>
   <header class="topbar">
-    <h1 class="brand">Dicionário de Acordes</h1>
+    <div class="brand-row">
+      <h1 class="brand">Dicionário de Acordes</h1>
+      <div class="top-actions">
+        <button id="instalar" type="button" class="btn small" hidden>⤓ Instalar</button>
+        <button id="tema" type="button" class="btn small">Tema: automático</button>
+        <button id="canhoto" type="button" class="btn small" aria-pressed="false">Canhoto</button>
+      </div>
+    </div>
     <div class="search" role="search">
       <label for="busca" class="sr-only">Buscar acorde</label>
       <input id="busca" type="text" autocomplete="off" spellcheck="false"
@@ -32,6 +54,19 @@
     </section>
 
     <section class="panel viewer" aria-label="Diagrama">
+      <div id="ensaio" class="rehearsal" hidden>
+        <div class="rehearsal-head">
+          <strong id="ensaio-nome"></strong>
+          <span id="ensaio-contador" aria-live="polite"></span>
+          <button id="ensaio-sair" type="button" class="btn small" aria-label="Sair do modo ensaio">✕ Sair</button>
+        </div>
+        <div id="ensaio-acordes" class="rehearsal-chords" role="group" aria-label="Acordes da progressão"></div>
+        <div class="rehearsal-nav">
+          <button id="ensaio-anterior" type="button" class="btn">◀ Anterior</button>
+          <button id="ensaio-tocar" type="button" class="btn play-btn">▶ Tocar</button>
+          <button id="ensaio-proximo" type="button" class="btn">Próximo ▶</button>
+        </div>
+      </div>
       <div class="chord-head">
         <h2 id="acorde-simbolo" class="chord-symbol">—</h2>
         <p id="acorde-nome" class="chord-name"></p>
@@ -42,6 +77,7 @@
       <div class="play" role="group" aria-label="Ouvir o acorde">
         <button id="tocar-dedilhar" type="button" class="btn play-btn">▶ Dedilhar</button>
         <button id="tocar-batida" type="button" class="btn play-btn">▶ Batida</button>
+        <button id="favoritar" type="button" class="btn" aria-pressed="false">☆ Favoritar</button>
       </div>
       <p class="play-hint">Toque numa corda do diagrama para ouvi-la sozinha. No iPhone, desative o modo silencioso para ouvir.</p>
       <div class="pos-nav">
@@ -64,7 +100,62 @@
         <tbody id="analise-tabela"></tbody>
       </table>
     </section>
+
+    <section class="panel library" aria-label="Favoritos e repertório">
+      <h2 class="panel-title">Favoritos</h2>
+      <ul id="favoritos" class="item-list"></ul>
+      <h2 class="panel-title">Progressões / Repertório</h2>
+      <form id="prog-form" class="prog-form">
+        <label for="prog-nome" class="sr-only">Nome da progressão</label>
+        <input id="prog-nome" type="text" placeholder="Nome (ex.: Samba em Ré menor)" autocomplete="off">
+        <label for="prog-acordes" class="sr-only">Acordes da progressão</label>
+        <input id="prog-acordes" type="text" placeholder="C7M → A7 → Dm7 → G7(b9)" autocomplete="off" spellcheck="false" required>
+        <button type="submit" class="btn">Salvar progressão</button>
+        <p id="prog-msg" class="form-msg" aria-live="polite"></p>
+      </form>
+      <ul id="progressoes" class="item-list"></ul>
+      <h2 class="panel-title">Backup</h2>
+      <div class="backup">
+        <button id="exportar" type="button" class="btn">Exportar JSON</button>
+        <button id="importar" type="button" class="btn">Importar JSON</button>
+        <button id="apagar-tudo" type="button" class="btn">Apagar tudo</button>
+        <input id="importar-arquivo" type="file" accept="application/json,.json" hidden>
+      </div>
+      <p id="backup-msg" class="form-msg" aria-live="polite"></p>
+    </section>
+
+    <section class="panel reverse" aria-label="Identificar acorde">
+      <h2 class="panel-title">Identificar acorde</h2>
+      <p class="hint">Toque no braço para montar um shape (acima da corda: muda ↔ solta) ou digite as casas.</p>
+      <div class="reverse-input">
+        <label for="reverso-casas">Casas</label>
+        <input id="reverso-casas" type="text" autocomplete="off" spellcheck="false" placeholder="x32010">
+        <button id="reverso-limpar" type="button" class="btn small">Limpar</button>
+      </div>
+      <div id="reverso-braco" class="diagram-editor"></div>
+      <div class="pos-nav">
+        <button id="reverso-menos" type="button" class="btn small" aria-label="Casas mais graves">◀</button>
+        <span id="reverso-janela" class="pos-count">Casas 1–5</span>
+        <button id="reverso-mais" type="button" class="btn small" aria-label="Casas mais agudas">▶</button>
+      </div>
+      <ol id="reverso-resultados" class="reverse-results" aria-live="polite"></ol>
+    </section>
   </main>
+
+  <div id="atualizacao" class="toast" role="status" hidden>
+    <span>Nova versão disponível</span>
+    <button id="atualizar" type="button" class="btn">Atualizar</button>
+  </div>
+
+  <dialog id="ios-instalar" class="ios-dialog" aria-labelledby="ios-titulo">
+    <h2 id="ios-titulo">Instalar no iPhone/iPad</h2>
+    <ol>
+      <li>Toque em <strong>Compartilhar</strong> <span aria-hidden="true" class="ios-icon">⬆︎</span> na barra do Safari.</li>
+      <li>Escolha <strong>Adicionar à Tela de Início</strong> <span aria-hidden="true" class="ios-icon">＋</span>.</li>
+      <li>Confirme em <strong>Adicionar</strong>. O app abre em tela cheia e funciona offline.</li>
+    </ol>
+    <form method="dialog"><button class="btn">Entendi</button></form>
+  </dialog>
 
   <script type="module" src="./js/app.js"></script>
 </body>

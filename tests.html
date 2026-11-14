@@ -14,7 +14,7 @@
 </head>
 <body>
 <main>
-  <h1>Testes dos critérios de aceite — Fases 1 a 3</h1>
+  <h1>Testes dos critérios de aceite — Fases 1 a 5</h1>
   <p id="resumo">Rodando…</p>
   <ol id="resultados"></ol>
   <h2>Validação do <code>curated.js</code></h2>
@@ -23,7 +23,8 @@
 <script type="module">
 import { parseChord } from './js/parser.js';
 import { chordNotes, CHORD_TYPES, ROOT_GRID, noteToMidi } from './js/theory.js';
-import { getVoicings, checkShape, curatedFor, curatedReport } from './js/voicings.js';
+import { getVoicings, checkShape, curatedFor, curatedReport, identifyChord } from './js/voicings.js';
+import { createStorage, formatRoute, parseRoute, splitProgression } from './js/storage.js';
 import { INSTRUMENTS } from './js/instruments.js';
 import { renderDiagram } from './js/diagram.js';
 import { play, setContext, activeVoices, voicesFor, ksSamples } from './js/audio.js';
@@ -233,6 +234,106 @@ const firstPc = (v, cs) => { const k = v.frets.findIndex(f => f >= 0); return (c
   } else {
     report('OfflineAudioContext indisponível — testes de grafo pulados', true);
   }
+}
+
+// ---------- Fase 4: PWA ----------
+{
+  const man = await fetch('./manifest.json').then(r => r.json());
+  report('Manifest: standalone, start_url/scope relativos, pt-BR', man.display === 'standalone' && man.start_url === './index.html' && man.scope === './' && man.lang === 'pt-BR' && !!man.theme_color && !!man.background_color && !!man.short_name);
+  const icon = (size, purpose) => man.icons.find(i => i.sizes === size && i.purpose === purpose && i.type === 'image/png');
+  report('Manifest: ícones PNG 192/512 "any" e 512 "maskable"', !!(icon('192x192', 'any') && icon('512x512', 'any') && icon('512x512', 'maskable')));
+  const sizes = await Promise.all([...man.icons.map(i => i.src), './icons/apple-touch-icon.png'].map(async src => {
+    const img = new Image(); img.src = src; await img.decode(); return `${img.naturalWidth}`;
+  }));
+  report('Ícones carregam com o tamanho declarado (192, 512, 512, 180)', sizes.join() === '192,512,512,180', sizes.join());
+  const sw = await fetch('./sw.js').then(r => r.text());
+  report('sw.js: CACHE_NAME versionado', /const CACHE_NAME = 'dicionario-acordes-v\d+'/.test(sw));
+  const assets = [...sw.matchAll(/^\s+'(\.\/[^']*)',$/gm)].map(m => m[1]);
+  const missing = [];
+  for (const a of assets) if (!(await fetch(a, { cache: 'no-store' })).ok) missing.push(a);
+  const js = ['app', 'theory', 'parser', 'instruments', 'voicings', 'curated', 'diagram', 'audio', 'storage'].map(n => `./js/${n}.js`);
+  report(`sw.js: pré-cache de ${assets.length} arquivos, todos existem e incluem todos os módulos`, !missing.length && js.every(j => assets.includes(j)) && assets.includes('./index.html'), missing.join(', '));
+  report('sw.js: sem caminhos absolutos', !/['"]\/(?!\/)/.test(sw.replace(/\/\/.*$/gm, '')));
+}
+
+// ---------- Fase 5: Extras ----------
+{
+  // Favoritos e progressões: recarregamento e backup
+  const KEY = 'dicionario-acordes:teste';
+  localStorage.removeItem(KEY);
+  const s1 = createStorage({ key: KEY });
+  s1.addFavorite({ symbol: 'C7M', instrument: 'violao', tuning: 'padrao', idx: 1, frets: [-1, 3, 2, 0, 0, 0] });
+  s1.addFavorite({ symbol: 'G', instrument: 'viola', tuning: 'rioAbaixo', idx: 0, frets: [0, 0, 0, 0, 0] });
+  report('Favorito duplicado não é salvo de novo', s1.addFavorite({ symbol: 'G', instrument: 'viola', tuning: 'rioAbaixo', idx: 0, frets: [0, 0, 0, 0, 0] }) === false);
+  const chords = splitProgression('C7M → A7 → Dm7 → G7(b9)', parseChord);
+  report('Progressão: "C7M → A7 → Dm7 → G7(b9)" vira 4 cifras', eq(chords, ['C7M', 'A7', 'Dm7', 'G7(b9)']), chords.join(' | '));
+  report('Progressão separada por espaços ("C Am F G")', eq(splitProgression('C Am F G', parseChord), ['C', 'Am', 'F', 'G']));
+  s1.saveProgression({ name: 'Ensaio', chords });
+  s1.setPref('leftHanded', true);
+  const s2 = createStorage({ key: KEY }); // simula recarregar a página
+  const snap = st => JSON.stringify([st.favorites(), st.progressions(), st.prefs()]);
+  report('Favoritos, progressões e preferências sobrevivem ao recarregamento', snap(s2) === snap(s1) && s2.favorites().length === 2 && s2.progressions().length === 1, snap(s2));
+  const backup = s2.exportJSON();
+  s2.clear();
+  const s3 = createStorage({ key: KEY });
+  report('Limpar apaga tudo', s3.favorites().length === 0 && s3.progressions().length === 0 && !s3.prefs().leftHanded);
+  const n = s3.importJSON(backup);
+  const s4 = createStorage({ key: KEY });
+  report('Exportar → limpar → importar restaura tudo', snap(s4) === snap(s1), `${n.favorites} favoritos, ${n.progressions} progressões`);
+  let err = '';
+  try { s4.importJSON('{"foo":1}'); } catch (e) { err = e.message; }
+  report('Importar arquivo inválido é recusado sem perder dados', !!err && s4.favorites().length === 2, err);
+  const broken = { getItem() { throw new Error('bloqueado'); }, setItem() { throw new Error('cheio'); }, removeItem() { throw new Error('x'); } };
+  const s5 = createStorage({ key: KEY, backend: broken });
+  report('localStorage indisponível não quebra o app (try/catch)', s5.addFavorite({ symbol: 'C', instrument: 'violao', tuning: 'padrao', idx: 0, frets: [] }) === false && s5.favorites().length === 1);
+  localStorage.removeItem(KEY);
+
+  // Rota na URL
+  report('Rota: formato #/violao/C7M/2', formatRoute({ instrument: 'violao', tuning: 'padrao', symbol: 'C7M', idx: 1 }, INSTRUMENTS) === '#/violao/C7M/2');
+  const routes = [
+    { instrument: 'violao', tuning: 'padrao', symbol: 'C7M', idx: 1 },
+    { instrument: 'viola', tuning: 'rioAbaixo', symbol: 'G/B', idx: 2 },
+    { instrument: 'viola', tuning: 'cebolaoMi', symbol: 'F#m7(b5)', idx: 0 },
+    { instrument: 'ukulele', tuning: 'highG', symbol: 'C6/9', idx: 3 },
+  ];
+  const bad = routes.filter(r => !eq(parseRoute(formatRoute(r, INSTRUMENTS), INSTRUMENTS), r));
+  report('Rota: formatar → ler devolve exatamente o estado (afinação, barra, #, parênteses)', !bad.length, routes.map(r => formatRoute(r, INSTRUMENTS)).join(' '));
+  report('Rota inválida é ignorada', parseRoute('#/piano/C/1', INSTRUMENTS) === null && parseRoute('', INSTRUMENTS) === null);
+
+  // Modo canhoto: espelha só a geometria
+  const v = V('C')[0], T = INSTRUMENTS.violao.tunings.padrao;
+  const r = renderDiagram(v, INSTRUMENTS.violao, T), l = renderDiagram(v, INSTRUMENTS.violao, T, { leftHanded: true });
+  const noFlip = [l, ...l.querySelectorAll('*')].every(e => !/scale\(\s*-1/.test(e.getAttribute('transform') || '') && !/scale/.test(e.getAttribute('style') || ''));
+  const legend = svg => [...svg.querySelectorAll('text')].filter(t => v.courseNotes.includes(t.textContent) && +t.getAttribute('font-size') === 10.5);
+  const lx = legend(l).map(t => +t.getAttribute('x')), rx = legend(r).map(t => +t.getAttribute('x'));
+  const dots = svg => [...svg.querySelectorAll('circle[r="10"]')].map(c => +c.getAttribute('cx')).sort((a, b) => a - b);
+  const W = +l.getAttribute('viewBox').split(' ')[2];
+  report('Canhoto: textos sem espelhamento (sem scale(-1)), legenda em ordem inversa', noFlip && lx.length === 5 && lx[0] > lx[4] && rx[0] < rx[4], `${lx.join(',')}`);
+  report('Canhoto: geometria espelhada (dedos e cordas trocam de lado)', dots(l).length === 3 && eq(dots(l), dots(r).map(x => W - x - 18 + 36).sort((a, b) => a - b)) && !eq(dots(l), dots(r)) && l.textContent === r.textContent);
+
+  // Identificador reverso
+  const F = s => (s.includes('-') ? s.split('-') : [...s]).map(c => (c === 'x' ? -1 : +c));
+  const REV = [
+    ['violao', 'padrao', 'x32010', 'C'], ['violao', 'padrao', '320003', 'G'], ['violao', 'padrao', '320033', 'G'], ['violao', 'padrao', 'xx0232', 'D'],
+    ['violao', 'padrao', 'x02210', 'Am'], ['violao', 'padrao', '022100', 'E'], ['violao', 'padrao', '133211', 'F'], ['violao', 'padrao', 'x24432', 'Bm'],
+    ['viola', 'cebolaoMi', '00000', 'E'], ['viola', 'cebolaoRe', '00000', 'D'], ['viola', 'rioAbaixo', '00000', 'G'],
+    ['ukulele', 'highG', '0003', 'C'], ['ukulele', 'highG', '0232', 'G'], ['ukulele', 'highG', '2000', 'Am'], ['ukulele', 'highG', '2010', 'F'], ['ukulele', 'highG', '0212', 'G7'],
+  ];
+  for (const [i, t, shape, exp] of REV) {
+    const got = identifyChord(F(shape), i, t).map(x => x.symbol);
+    report(`Reverso ${INSTRUMENTS[i].tunings[t].short || INSTRUMENTS[i].name}: ${shape} → ${exp}`, got[0] === exp, got.join(' / ') || 'nada');
+  }
+  const am7 = identifyChord(F('x02010'), 'violao', 'padrao').map(x => x.symbol);
+  report('Reverso: x02010 → Am7 / C6/A (fundamental no baixo primeiro)', am7[0] === 'Am7' && am7[1] === 'C6/A', am7.join(' / '));
+  const gb = identifyChord(F('x20003'), 'violao', 'padrao').map(x => x.symbol);
+  report('Reverso: inversão x20003 → G/B', gb[0] === 'G/B', gb.join(' / '));
+  // Toda 1ª posição gerada pelo próprio app é reconhecida pelo reverso (consistência com o gerador)
+  const miss = [];
+  for (const [i, t] of ALL) for (const r of ROOT_GRID) for (const ty of CHORD_TYPES) {
+    const c = parseChord(r + ty.q), v0 = getVoicings(c, i, t)[0];
+    if (v0 && !v0.label.includes('sem tônica') && !identifyChord(v0.frets, i, t, { max: 99 }).some(x => x.symbol === c.symbol)) miss.push(`${i}/${t} ${c.symbol} ${fmt(v0)}`);
+  }
+  report('Reverso reconhece a 1ª posição de todos os tipos × 12 tônicas em todos os instrumentos', !miss.length, miss.slice(0, 8).join('; ') + (miss.length > 8 ? ` … (+${miss.length - 8})` : ''));
 }
 
 // Saída na tela

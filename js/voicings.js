@@ -1,5 +1,5 @@
 // voicings.js — gerador algorítmico + ranking de posições (funções puras, sem DOM).
-import { chordNotes, noteToMidi, pcOf } from './theory.js';
+import { CHORD_TYPES, ROOT_GRID, chordNotes, noteToMidi, pcOf } from './theory.js';
 import { parseChord } from './parser.js';
 import { INSTRUMENTS } from './instruments.js';
 import { CURATED } from './curated.js';
@@ -78,7 +78,7 @@ function barresFromFingers(frets, fingers) {
 }
 
 /** Verifica notas/baixo/abertura. Retorna motivo de rejeição (string) ou null se válido. */
-export function checkShape(frets, notes, courses, { rootless = false } = {}) {
+export function checkShape(frets, notes, courses, { rootless = false, span = true } = {}) {
   if (frets.length !== courses.length) return `esperava ${courses.length} cordas`;
   const played = [];
   for (let i = 0; i < frets.length; i++) {
@@ -97,7 +97,7 @@ export function checkShape(frets, notes, courses, { rootless = false } = {}) {
   const lowest = played.reduce((a, b) => (b.midi < a.midi ? b : a));
   if (!rootless && !bassOk(courses.bassRule, notes, played[0].pc, lowest.pc)) return 'baixo incorreto';
   const fr = frets.filter(f => f > 0);
-  if (fr.length && Math.max(...fr) - Math.min(...fr) > MAX_SPAN) return 'abertura maior que 4 casas';
+  if (span && fr.length && Math.max(...fr) - Math.min(...fr) > MAX_SPAN) return 'abertura maior que 4 casas';
   return null;
 }
 
@@ -250,4 +250,42 @@ export function getVoicings(chord, instrumentId, tuningId, { max = 8 } = {}) {
   }
   memo.set(key, out);
   return out;
+}
+
+// ---------- Identificação reversa ----------
+/**
+ * Nomes possíveis para um shape (casas da corda mais grossa → mais fina, -1 = muda).
+ * Ordem: tônica no baixo primeiro, depois menos notas omitidas, depois tipos mais simples.
+ * Usa as mesmas regras do gerador (notas obrigatórias, regra de baixo do instrumento), sem limite de abertura.
+ * → [{ symbol, chord, rootInBass, bassName, omitted }]
+ */
+export function identifyChord(frets, instrumentId, tuningId, { max = 12 } = {}) {
+  const courses = courseInfo(instrumentId, tuningId);
+  if (!Array.isArray(frets) || frets.length !== courses.length) return [];
+  const played = [];
+  frets.forEach((f, i) => { if (f >= 0) played.push({ pc: (courses[i].pc + f) % 12, midi: courses[i].low + f }); });
+  if (played.length < 2) return [];
+  const present = new Set(played.map(p => p.pc));
+  const bassPc = courses.bassRule === 'pitch'
+    ? played.reduce((a, b) => (b.midi < a.midi ? b : a)).pc
+    : played[0].pc; // viola/ukulele: corda/par mais grave tocado
+  const out = [];
+  for (const rootPc of present) {
+    const root = ROOT_GRID[rootPc];
+    CHORD_TYPES.forEach((t, order) => {
+      const plain = parseChord(root + t.q);
+      const pn = plain && chordNotes(plain);
+      if (!pn || [...present].some(pc => !pn.pcs.includes(pc))) return;
+      let chord = plain;
+      if (checkShape(frets, pn, courses, { span: false })) {
+        if (bassPc === rootPc) return; // falta nota obrigatória
+        chord = parseChord(`${root}${t.q}/${pn.spelled[pn.pcs.indexOf(bassPc)]}`);
+        if (!chord || checkShape(frets, chordNotes(chord), courses, { span: false })) return;
+      }
+      const omitted = pn.pcs.filter(pc => !present.has(pc)).length;
+      out.push({ symbol: chord.symbol, chord, rootInBass: bassPc === rootPc, bassName: pn.nameOf(bassPc), omitted, order });
+    });
+  }
+  out.sort((a, b) => b.rootInBass - a.rootInBass || a.omitted - b.omitted || a.order - b.order || a.symbol.localeCompare(b.symbol));
+  return out.slice(0, max).map(({ order, ...r }) => r);
 }
