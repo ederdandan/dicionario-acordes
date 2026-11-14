@@ -3,7 +3,7 @@
 
 const KEY = 'dicionario-acordes:v1';
 const FORMAT = 'dicionario-acordes-backup';
-const DEFAULT_PREFS = { theme: 'auto', leftHanded: false };
+const DEFAULT_PREFS = { theme: 'auto', leftHanded: false, saveWarn: true };
 
 const empty = () => ({ favorites: [], progressions: [], tabs: [], prefs: { ...DEFAULT_PREFS } });
 
@@ -43,6 +43,7 @@ function sanitize(raw) {
   if (raw.prefs && typeof raw.prefs === 'object') {
     if (['auto', 'light', 'dark'].includes(raw.prefs.theme)) out.prefs.theme = raw.prefs.theme;
     out.prefs.leftHanded = raw.prefs.leftHanded === true;
+    out.prefs.saveWarn = raw.prefs.saveWarn !== false; // aviso "fica só neste aparelho" ao salvar tablatura
   }
   return out;
 }
@@ -106,6 +107,11 @@ export function createStorage({ key = KEY, backend } = {}) {
     // Backup
     exportJSON() {
       return JSON.stringify({ format: FORMAT, version: 1, exported: new Date().toISOString(), ...data }, null, 2);
+    },
+    /** Backup com uma só tablatura (sem preferências): importável pelo mesmo "Importar JSON". */
+    exportTabJSON(id) {
+      const tab = data.tabs.find(t => t.id === id);
+      return tab ? JSON.stringify({ format: FORMAT, version: 1, exported: new Date().toISOString(), tabs: [tab] }, null, 2) : null;
     },
     /** Mescla um backup (itens com o mesmo id são substituídos). Lança erro se o arquivo for inválido. */
     importJSON(text) {

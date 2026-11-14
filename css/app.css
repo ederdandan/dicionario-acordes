@@ -169,6 +169,7 @@ body {
 .ios-dialog::backdrop { background: rgb(0 0 0 / .4); }
 .ios-dialog h2 { margin-top: 0; font-size: 1.1rem; }
 .ios-dialog li { margin: 6px 0; }
+.dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .ios-icon { display: inline-block; border: 1px solid var(--border); border-radius: 6px; padding: 0 6px; }
 
 /* ===================== Celular ===================== */

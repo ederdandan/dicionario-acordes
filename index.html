@@ -259,6 +259,19 @@
     <form method="dialog"><button class="btn">Entendi</button></form>
   </dialog>
 
+  <dialog id="tab-salva" class="ios-dialog" aria-labelledby="tab-salva-titulo" aria-describedby="tab-salva-texto">
+    <h2 id="tab-salva-titulo">Tablatura salva — só neste aparelho</h2>
+    <p id="tab-salva-texto">Ela fica guardada apenas neste navegador; não vai para nenhuma nuvem nem conta.
+      Se você <strong>limpar os dados do navegador</strong>, desinstalar o app ou trocar de aparelho, <strong>ela se perde</strong>.
+      Exporte um arquivo para guardar uma cópia — depois é só usar <em>Repertório → Importar JSON</em>.</p>
+    <form method="dialog" class="dialog-actions">
+      <button id="tab-salva-exportar" class="btn" value="tab">Exportar esta tablatura</button>
+      <button id="tab-salva-backup" class="btn" value="all">Exportar backup completo</button>
+      <button class="btn" value="">Agora não</button>
+      <label class="check"><input id="tab-salva-nao-avisar" type="checkbox"> Não avisar de novo</label>
+    </form>
+  </dialog>
+
   <script type="module" src="./js/app.js"></script>
 </body>
 </html>

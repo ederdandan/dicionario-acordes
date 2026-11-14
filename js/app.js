@@ -415,15 +415,18 @@ $('ensaio-sair').addEventListener('click', () => { closeStage(); state.rehearsal
 $('ensaio-palco').addEventListener('click', () => openStage());
 
 // ---------- Backup (JSON) ----------
-$('exportar').addEventListener('click', () => {
-  const blob = new Blob([store.exportJSON()], { type: 'application/json' });
-  const a = Object.assign(document.createElement('a'), {
-    href: URL.createObjectURL(blob), download: `dicionario-acordes-backup-${new Date().toISOString().slice(0, 10)}.json`,
-  });
+function downloadJSON(text, name) {
+  const blob = new Blob([text], { type: 'application/json' });
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: name });
   document.body.append(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const today = () => new Date().toISOString().slice(0, 10);
+const exportBackup = () => downloadJSON(store.exportJSON(), `dicionario-acordes-backup-${today()}.json`);
+$('exportar').addEventListener('click', () => {
+  exportBackup();
   $('backup-msg').textContent = 'Backup exportado.';
 });
 $('importar').addEventListener('click', () => $('importar-arquivo').click());
@@ -1160,8 +1163,21 @@ $('tab-salvar').addEventListener('click', () => {
     instrument: i, tuning: t, bpm: +$('tab-bpm').value, unit: +$('tab-unidade').value,
   });
   TAB.editId = saved?.id ?? null;
-  notify(saved ? 'Tablatura salva' : 'Não foi possível salvar');
   renderTabList();
+  if (!saved) return notify('Não foi possível salvar');
+  if (!store.prefs().saveWarn || !$('tab-salva').showModal) return notify('Tablatura salva neste aparelho');
+  $('tab-salva-nao-avisar').checked = false;
+  $('tab-salva').showModal();
+});
+// Aviso ao salvar: os dados ficam só no navegador deste aparelho → oferecer exportar
+const slug = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w-]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'tablatura';
+$('tab-salva-exportar').addEventListener('click', () => {
+  const tab = store.tabs().find(t => t.id === TAB.editId);
+  if (tab) downloadJSON(store.exportTabJSON(tab.id), `tablatura-${slug(tab.name)}-${today()}.json`);
+});
+$('tab-salva-backup').addEventListener('click', exportBackup);
+$('tab-salva').addEventListener('close', () => {
+  if ($('tab-salva-nao-avisar').checked) store.setPref('saveWarn', false);
 });
 fillTabInstruments();
 setupGrid();

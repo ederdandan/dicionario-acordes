@@ -229,7 +229,7 @@ A nota de cada corda do par está listada abaixo. Nos pares 5º, 4º e 3º, as c
 - **Contrato:** `parseTab(texto, nCordas) → { blocks: [{ lines: [string], notes: [{ course, fret, line, col, len, ev }] }], events: [{ step, block, frets: number[] }], steps } | { error }`.
 - **Reprodução:** o instrumento e a afinação são escolhidos no módulo. O agendador olha uma janela à frente no relógio do Web Audio (sem temporizador acumulando atraso). Parar abafa tudo. Opção de repetir.
 - **Destaque:** a cada quadro, compara o relógio do áudio (descontando `outputLatency`) com o horário de cada evento: a nota que soa fica acesa, as já tocadas ficam marcadas e a rolagem acompanha. Tocar num número começa dali.
-- **Salvar:** tablaturas (nome, texto, instrumento, afinação, BPM, unidade) no `storage.js`, entrando no backup JSON.
+- **Salvar:** tablaturas (nome, texto, instrumento, afinação, BPM, unidade) no `storage.js`, entrando no backup JSON. Ao salvar, um `<dialog>` avisa que fica só neste navegador e oferece **Exportar esta tablatura** (`exportTabJSON(id)`: backup só com ela, sem `prefs`, importável pelo mesmo Importar JSON) ou o backup completo; "Não avisar de novo" grava `prefs.saveWarn = false`.
 - **Celular:** nova aba "Tablatura" na barra inferior; tablatura com rolagem horizontal própria.
 
 #### ✅ Critérios de aceite

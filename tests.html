@@ -397,6 +397,14 @@ G|--2--|`, 4);
   b.importJSON(bk);
   const t = createStorage({ key: KEY }).tabs()[0];
   report('Tablatura sobrevive a recarregar e a exportar → limpar → importar', t?.text === TAB_EXAMPLE && t.bpm === 100 && t.unit === 8);
+  const one = createStorage({ key: KEY }).exportTabJSON(t.id);
+  b.clear();
+  const c = createStorage({ key: KEY });
+  c.setPref('theme', 'dark');
+  const got = c.importJSON(one);
+  report('Exportar só uma tablatura → importar traz ela sem mexer nas preferências', got.tabs === 1 && got.favorites === 0 && c.tabs()[0]?.text === TAB_EXAMPLE && c.prefs().theme === 'dark' && JSON.parse(one).prefs === undefined);
+  report('Preferência saveWarn: ligada por padrão e persiste desligada', createStorage({ key: KEY + 'x', backend: { getItem: () => null, setItem() {} } }).prefs().saveWarn === true
+    && (c.setPref('saveWarn', false), createStorage({ key: KEY }).prefs().saveWarn === false));
   localStorage.removeItem(KEY);
 }
 
