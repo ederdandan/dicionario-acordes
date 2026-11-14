@@ -37,7 +37,7 @@ function sanitize(raw) {
     out.tabs.push({
       id: str(t.id, 60) || newId(), name: str(t.name, 80) || 'Sem nome', text,
       instrument: str(t.instrument, 30) || 'violao', tuning: str(t.tuning, 30) || 'padrao',
-      bpm: Math.min(240, Math.max(40, Math.round(Number(t.bpm)) || 90)), unit: t.unit === 8 ? 8 : 16, created: Number(t.created) || 0,
+      bpm: Math.min(240, Math.max(40, Math.round(Number(t.bpm)) || 90)), unit: [8, 32].includes(t.unit) ? t.unit : 16, created: Number(t.created) || 0,
     });
   }
   if (raw.prefs && typeof raw.prefs === 'object') {

@@ -147,7 +147,7 @@ export function parseTab(text, n, { isChord = () => false } = {}) {
   return { blocks, events, steps: step, ignored: [...new Set(ignored)], techniques: Object.keys(TECH_NAMES).filter(k => techs.has(k)) };
 }
 
-/** Duração de 1 passo em segundos: unit = 8 (colcheia) ou 16 (semicolcheia) por semínima no BPM. */
+/** Duração de 1 passo em segundos: unit = 8 (colcheia), 16 (semicolcheia) ou 32 (fusa); BPM em semínimas. */
 export const stepSeconds = (bpm, unit = 16) => 60 / Math.min(240, Math.max(40, bpm || 90)) / (unit / 4);
 
 export const TAB_EXAMPLE = `e|-------0-------0-|-------0-------0-|

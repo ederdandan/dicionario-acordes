@@ -9,6 +9,7 @@ import { play, unlock, scheduleFrets, scheduleClick, stopAll, audioNow, audioLat
 import { parseTab, stepSeconds, TAB_EXAMPLE, TECH_NAMES, eventsToGrid, gridToText, gridStarts, tabLabels } from './tab.js';
 import { createStorage, favoriteId, formatRoute, parseRoute, splitProgression } from './storage.js';
 import { STUDY_PROGRESSIONS, STUDY_GROUPS, STUDY_KEYS, transposeProgression } from './progressions.js';
+import { SONG_TABS } from './songs.js';
 
 const $ = id => document.getElementById(id);
 const state = {
@@ -1049,9 +1050,9 @@ function setMark(which) {
 }
 
 // ----- Editor em grade (6b) -----
-const measure = () => +$('tab-unidade').value; // 4 tempos: 16 semicolcheias ou 8 colcheias
+const measure = () => +$('tab-unidade').value; // 4 tempos: 32 fusas, 16 semicolcheias ou 8 colcheias
 // Duração em figuras (em semicolcheias): nome, símbolo e fração da semibreve
-const FIGS = { 1: ['semicolcheia', '♬', '1/16'], 2: ['colcheia', '♪', '1/8'], 3: ['colcheia pontuada', '♪.', '3/16'], 4: ['semínima', '♩', '1/4'],
+const FIGS = { 0.5: ['fusa', '', '1/32'], 1: ['semicolcheia', '♬', '1/16'], 2: ['colcheia', '♪', '1/8'], 3: ['colcheia pontuada', '♪.', '3/16'], 4: ['semínima', '♩', '1/4'],
   6: ['semínima pontuada', '♩.', '3/8'], 8: ['mínima', '', '1/2'], 12: ['mínima pontuada', '', '3/4'], 16: ['semibreve', '', '1'], 24: ['semibreve pontuada', '', '3/2'], 32: ['2 semibreves', '', '2'] };
 const fig = steps => FIGS[steps * 16 / measure()];
 const figName = steps => { const f = fig(steps); return f ? `${f[1] ? f[1] + ' ' : ''}${f[0]} (${f[2]})` : `${steps} ${steps === 1 ? 'passo' : 'passos'}`; };
@@ -1286,6 +1287,31 @@ function dockResize() {
 }
 if ('ResizeObserver' in window) new ResizeObserver(dockResize).observe($('tab-dock'));
 
+/** Músicas para estudar (js/songs.js), agrupadas por instrumento; abre o grupo do instrumento atual. */
+function renderSongs() {
+  $('tab-musicas').replaceChildren(...Object.values(INSTRUMENTS).map(i => {
+    const det = Object.assign(document.createElement('details'), { className: 'song-group', open: i.id === state.instrument });
+    const songs = SONG_TABS.filter(s => s.instrument === i.id);
+    det.append(Object.assign(document.createElement('summary'), { textContent: `${i.name} (${songs.length})` }));
+    const ul = Object.assign(document.createElement('ul'), { className: 'item-list song-list' });
+    ul.append(...songs.map(s => {
+      const li = document.createElement('li');
+      const multi = Object.keys(i.tunings).length > 1;
+      const b = button('', 'btn open', () => {
+        loadTab({ name: s.name, instrument: s.instrument, tuning: s.tuning, text: s.text, bpm: s.bpm, unit: s.unit });
+        showTabPane('player');
+      }, { title: `Abrir ${s.name}` });
+      b.append(`▶ ${s.name} `, Object.assign(document.createElement('small'), {
+        textContent: `${s.author} · ${s.key}${s.original ? ' (tom original)' : ''}${multi ? ` · ${i.tunings[s.tuning].short || i.tunings[s.tuning].name}` : ''}`,
+      }));
+      li.append(b);
+      return li;
+    }));
+    det.append(ul);
+    return det;
+  }));
+}
+
 /** Carrega uma tablatura no editor (salva, exemplo ou importada). */
 function loadTab(t, { keepXML = false } = {}) {
   tabStop();
@@ -1422,6 +1448,7 @@ $('tab-salva').addEventListener('close', () => {
 fillTabInstruments();
 setupGrid();
 renderTabList();
+renderSongs();
 renderAB();
 renderBoard(null);
 
