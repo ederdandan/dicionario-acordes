@@ -1,7 +1,7 @@
 // sw.js — service worker offline-first.
 // Ao publicar qualquer mudança nos arquivos abaixo, incremente CACHE_NAME: o app mostra
 // "Nova versão disponível — Atualizar" e só troca de versão quando o usuário confirmar.
-const CACHE_NAME = 'dicionario-acordes-v17';
+const CACHE_NAME = 'dicionario-acordes-v18';
 
 // Caminhos relativos ao escopo do SW (funciona em usuario.github.io/repo/).
 const ASSETS = [
@@ -22,6 +22,7 @@ const ASSETS = [
   './js/musicxml.js',
   './js/progressions.js',
   './js/songs.js',
+  './js/analytics.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/maskable-512.png',

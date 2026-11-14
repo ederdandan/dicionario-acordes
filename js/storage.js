@@ -3,7 +3,7 @@
 
 const KEY = 'dicionario-acordes:v1';
 const FORMAT = 'dicionario-acordes-backup';
-const DEFAULT_PREFS = { theme: 'auto', leftHanded: false, saveWarn: true, seen: {}, studyKey: 'C' };
+const DEFAULT_PREFS = { theme: 'auto', leftHanded: false, saveWarn: true, seen: {}, studyKey: 'C', stats: true };
 
 const empty = () => ({ favorites: [], progressions: [], tabs: [], prefs: { ...DEFAULT_PREFS, seen: {} } });
 
@@ -43,6 +43,7 @@ function sanitize(raw) {
   if (raw.prefs && typeof raw.prefs === 'object') {
     if (['auto', 'light', 'dark'].includes(raw.prefs.theme)) out.prefs.theme = raw.prefs.theme;
     out.prefs.leftHanded = raw.prefs.leftHanded === true;
+    out.prefs.stats = raw.prefs.stats !== false; // métricas de uso anônimas (GoatCounter)
     out.prefs.saveWarn = raw.prefs.saveWarn !== false; // aviso "fica só neste aparelho" ao salvar tablatura
     if (typeof raw.prefs.studyKey === 'string' && /^[A-G][#b]?$/.test(raw.prefs.studyKey)) out.prefs.studyKey = raw.prefs.studyKey; // tom das progressões de estudo
     // dicas de 1ª visita já vistas (tour, "deslize para trocar"…): { chave: true }

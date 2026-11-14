@@ -52,6 +52,7 @@ Os ícones são gerados por `node tools/gen-icons.mjs`.
 | `js/audio.js` | Sintetizador (Web Audio) |
 | `js/storage.js` | Favoritos, progressões, preferências, backup e rota da URL |
 | `js/app.js` | Interface, PWA (instalação/atualização) |
+| `js/analytics.js` | Métricas de uso anônimas (GoatCounter, sem cookies; desligável em Ajustes) |
 | `sw.js`, `manifest.json`, `icons/` | PWA |
 
 A especificação completa está em `spec-dicionario-acordes.md`.

@@ -10,6 +10,7 @@ import { parseTab, stepSeconds, TAB_EXAMPLE, TECH_NAMES, eventsToGrid, gridToTex
 import { createStorage, favoriteId, formatRoute, parseRoute, splitProgression } from './storage.js';
 import { STUDY_PROGRESSIONS, STUDY_GROUPS, STUDY_KEYS, transposeProgression } from './progressions.js';
 import { SONG_TABS } from './songs.js';
+import { trackView, trackEvent, trackEventDebounced, setEnabled as setStats, slug as gcSlug } from './analytics.js';
 
 const $ = id => document.getElementById(id);
 const state = {
@@ -46,7 +47,21 @@ function selectChord(chord, { idx = 0, frets = null } = {}) {
   const byFrets = frets?.length ? state.voicings.findIndex(v => v.frets.join() === frets.join()) : -1;
   state.idx = byFrets >= 0 ? byFrets : Math.min(Math.max(idx, 0), Math.max(state.voicings.length - 1, 0));
   render();
+  trackChord();
 }
+
+// ---------- Métricas (GoatCounter) ----------
+let lastChordKey = '';
+/** Conta o acorde visto (depois de 1,5 s parado nele, para não contar cada passo da navegação). */
+function trackChord() {
+  const key = `${state.instrument}/${state.tuning}/${state.chord.symbol}`;
+  if (key === lastChordKey) return;
+  trackEventDebounced('acorde', `acorde/${state.instrument}/${gcSlug(state.chord.symbol)}`, 1500, { title: `Acorde ${state.chord.symbol} (${inst().name})` });
+  lastChordKey = key;
+  if (!state.voicings.length) trackEventDebounced('acorde-vazio', `acorde-sem-posicao/${state.instrument}/${state.tuning}/${gcSlug(state.chord.symbol)}`, 1500);
+}
+const gc = (name, opts) => trackEvent(name, opts);
+const trackInstrument = () => trackEventDebounced('instrumento', `instrumento/${state.instrument}/${state.tuning}`, 500);
 
 function setRoot(root) {
   const c = state.chord;
@@ -95,6 +110,7 @@ function setInstrument(id) {
   if (id === state.instrument) return;
   state.instrument = id;
   state.tuning = Object.keys(INSTRUMENTS[id].tunings)[0];
+  trackInstrument();
   selectChord(state.chord);
   renderReverse();
 }
@@ -102,6 +118,7 @@ function setInstrument(id) {
 function setTuning(tid) {
   if (tid === state.tuning) return;
   state.tuning = tid;
+  trackInstrument();
   selectChord(state.chord);
   renderReverse();
 }
@@ -255,6 +272,7 @@ function move(d) {
   const i = state.idx + d;
   if (i < 0 || i >= state.voicings.length) return false;
   state.idx = i;
+  gc('posicao/trocar', { throttleMs: 10000 });
   renderViewer();
   renderAnalysis();
   renderStage();
@@ -266,6 +284,7 @@ function move(d) {
 function playCurrent(mode, course = null) {
   const v = state.voicings[state.idx];
   if (!v) return;
+  gc(`tocar/${course === null ? mode : 'corda'}${stageOpen() ? '-palco' : ''}`, { throttleMs: 5000 });
   play(v, state.instrument, tun(), { mode, course });
   checkSound();
 }
@@ -298,7 +317,8 @@ function setupSearch() {
   };
   const choose = sym => {
     const c = parseChord(sym);
-    if (!c) { msg.textContent = `Cifra não reconhecida: “${sym}”`; return; }
+    if (!c) { msg.textContent = `Cifra não reconhecida: “${sym}”`; gc(`busca/nao-reconhecida/${gcSlug(sym, 24)}`); return; }
+    gc('busca/escolher');
     msg.textContent = '';
     input.value = c.symbol;
     close();
@@ -364,20 +384,31 @@ function applyPrefs() {
   else document.documentElement.dataset.theme = theme;
   document.querySelectorAll('input[name="tema"]').forEach(r => { r.checked = r.value === theme; });
   $('canhoto').checked = leftHanded;
+  $('estatisticas').checked = store.prefs().stats;
+  setStats(store.prefs().stats);
 }
 
 document.querySelectorAll('input[name="tema"]').forEach(r => r.addEventListener('change', () => {
   store.setPref('theme', r.value);
   applyPrefs();
+  gc(`ajustes/tema/${r.value}`);
 }));
 $('canhoto').addEventListener('change', () => {
   store.setPref('leftHanded', $('canhoto').checked);
+  gc(`ajustes/canhoto/${$('canhoto').checked ? 'sim' : 'nao'}`);
   applyPrefs();
   renderViewer();
   renderReverse();
   renderBoard(TAB.cursor >= 0 && TAB.parsed ? TAB.parsed.events[TAB.cursor]?.frets : null);
 });
-$('ajustes-abrir').addEventListener('click', () => { $('backup-msg').textContent = ''; $('ajustes').showModal(); });
+$('ajustes-abrir').addEventListener('click', () => { $('backup-msg').textContent = ''; $('ajustes').showModal(); trackView('/ajustes', 'Ajustes'); });
+$('estatisticas').addEventListener('change', () => {
+  const on = $('estatisticas').checked;
+  if (!on) gc('ajustes/estatisticas/desligar'); // último envio, antes de desligar
+  store.setPref('stats', on);
+  applyPrefs();
+  if (on) gc('ajustes/estatisticas/ligar');
+});
 $('ajustes-fechar').addEventListener('click', () => $('ajustes').close());
 // Toque fora do quadro (no fundo escurecido) fecha
 $('ajustes').addEventListener('click', e => { if (e.target === $('ajustes')) $('ajustes').close(); });
@@ -403,6 +434,7 @@ function openFavorite(f) {
   state.instrument = f.instrument;
   state.tuning = f.tuning;
   selectChord(parseChord(f.symbol), { idx: f.idx, frets: f.frets });
+  gc('favorito/abrir');
   if (instChanged) renderReverse();
   showView('acordes');
   revealViewer();
@@ -416,17 +448,18 @@ function renderLibrary() {
     open.append(`${f.symbol} `, Object.assign(document.createElement('small'), {
       textContent: `${INSTRUMENTS[f.instrument]?.name || f.instrument}${tuningName(f.instrument, f.tuning)} · posição ${f.idx + 1}`,
     }));
-    li.append(open, button('✕', 'btn small', () => { store.removeFavorite(f.id); renderLibrary(); renderFavButton(); }, { 'aria-label': `Remover ${f.symbol} dos favoritos` }));
+    li.append(open, button('✕', 'btn small', () => { store.removeFavorite(f.id); gc('favorito/remover'); renderLibrary(); renderFavButton(); }, { 'aria-label': `Remover ${f.symbol} dos favoritos` }));
     return li;
   }) : [Object.assign(document.createElement('li'), { className: 'empty-item', textContent: 'Nenhum favorito ainda. Use “☆ Favoritar” no diagrama.' })]));
 
   const progs = store.progressions();
   $('progressoes').replaceChildren(...(progs.length ? progs.map(p => {
     const li = document.createElement('li');
-    const open = button('', 'btn open', () => startRehearsal(p), { title: `Ensaiar ${p.name}` });
+    const open = button('', 'btn open', () => { gc('progressao/ensaiar-minha'); startRehearsal(p); }, { title: `Ensaiar ${p.name}` });
     open.append(`▶ ${p.name} `, Object.assign(document.createElement('small'), { textContent: p.chords.join(' → ') }));
     li.append(open, button('✕', 'btn small', () => {
       store.removeProgression(p.id);
+      gc('progressao/apagar');
       if (state.rehearsal?.prog.id === p.id) state.rehearsal = null;
       renderLibrary(); renderRehearsal();
     }, { 'aria-label': `Apagar a progressão ${p.name}` }));
@@ -445,10 +478,13 @@ function renderStudy() {
       const t = transposeProgression(p, sel.value, parseChord);
       const name = `${p.name} em ${toPt(sel.value)}${p.minor ? ' menor' : ''}`;
       const li = document.createElement('li');
-      const open = button('', 'btn open study-open', () => startRehearsal({ id: t.id, name, chords: t.chords }), { title: `${p.tip} Toque para ensaiar.` });
+      const open = button('', 'btn open study-open', () => {
+        gc(`estudo/ensaiar/${gcSlug(p.id || p.name)}`, { title: `Estudo: ${p.name} em ${sel.value}` });
+        startRehearsal({ id: t.id, name, chords: t.chords });
+      }, { title: `${p.tip} Toque para ensaiar.` });
       open.append(`▶ ${p.name} `, Object.assign(document.createElement('small'), { textContent: p.roman }),
         Object.assign(document.createElement('span'), { className: 'study-chords', textContent: t.chords.join(' → ') }));
-      li.append(open, button('Copiar', 'btn small', () => copyProgression(name, t.chords), { 'aria-label': `Copiar ${p.name} para criar a sua` }));
+      li.append(open, button('Copiar', 'btn small', () => { gc(`estudo/copiar/${gcSlug(p.id || p.name)}`); copyProgression(name, t.chords); }, { 'aria-label': `Copiar ${p.name} para criar a sua` }));
       return li;
     });
     const ul = Object.assign(document.createElement('ul'), { className: 'item-list study-list' });
@@ -466,13 +502,16 @@ function copyProgression(name, chords) {
   $('prog-form').scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   $('prog-acordes').focus({ preventScroll: true });
 }
-$('estudo-tom').addEventListener('change', e => { store.setPref('studyKey', e.target.value); renderStudy(); });
+$('estudo-tom').addEventListener('change', e => { store.setPref('studyKey', e.target.value); gc(`estudo/tom/${gcSlug(e.target.value)}`); renderStudy(); });
 
 $('favoritar').addEventListener('click', () => {
   const f = currentFav();
   if (!f) return;
-  if (store.isFavorite(f)) { store.removeFavorite(favoriteId(f)); notify('Removido dos favoritos'); }
-  else notify(store.addFavorite(f) ? `${f.symbol} salvo nos favoritos` : 'Não foi possível salvar (armazenamento indisponível)');
+  if (store.isFavorite(f)) { store.removeFavorite(favoriteId(f)); notify('Removido dos favoritos'); gc('favorito/remover'); }
+  else {
+    notify(store.addFavorite(f) ? `${f.symbol} salvo nos favoritos` : 'Não foi possível salvar (armazenamento indisponível)');
+    gc('favorito/adicionar');
+  }
   renderFavButton();
   renderLibrary();
 });
@@ -487,6 +526,7 @@ $('add-prog').addEventListener('click', () => {
   const v = $('prog-acordes').value.trim();
   $('prog-acordes').value = v ? `${v}, ${state.chord.symbol}` : state.chord.symbol;
   renderDraft();
+  gc('progressao/adicionar-acorde');
   notify(`${state.chord.symbol} na progressão — salve em Repertório`);
 });
 $('prog-acordes').addEventListener('input', renderDraft);
@@ -501,6 +541,7 @@ $('prog-form').addEventListener('submit', e => {
   const chords = parts.map(p => parseChord(p).symbol);
   const prog = store.saveProgression({ name: $('prog-nome').value.trim() || chords.join(' → '), chords });
   msg.textContent = `Progressão “${prog.name}” salva.`;
+  gc('progressao/salvar', { title: `Progressão salva (${chords.length} acordes)` });
   notify('Progressão salva');
   $('prog-nome').value = $('prog-acordes').value = '';
   renderDraft();
@@ -539,8 +580,8 @@ function renderRehearsal() {
 $('ensaio-anterior').addEventListener('click', () => goRehearsal(state.rehearsal.pos - 1));
 $('ensaio-proximo').addEventListener('click', () => goRehearsal(state.rehearsal.pos + 1));
 $('ensaio-tocar').addEventListener('click', () => playCurrent('batida'));
-$('ensaio-sair').addEventListener('click', () => { closeStage(); state.rehearsal = null; renderRehearsal(); });
-$('ensaio-palco').addEventListener('click', () => openStage());
+$('ensaio-sair').addEventListener('click', () => { gc('ensaio/sair'); closeStage(); state.rehearsal = null; renderRehearsal(); });
+$('ensaio-palco').addEventListener('click', () => { gc('ensaio/palco'); openStage(); });
 
 // ---------- Backup (JSON) ----------
 function downloadJSON(text, name) {
@@ -555,6 +596,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const exportBackup = () => downloadJSON(store.exportJSON(), `dicionario-acordes-backup-${today()}.json`);
 $('exportar').addEventListener('click', () => {
   exportBackup();
+  gc('backup/exportar');
   $('backup-msg').textContent = 'Backup exportado.';
 });
 $('importar').addEventListener('click', () => $('importar-arquivo').click());
@@ -564,14 +606,17 @@ $('importar-arquivo').addEventListener('change', async e => {
   if (!file) return;
   try {
     const n = store.importJSON(await file.text());
+    gc('backup/importar');
     $('backup-msg').textContent = `Importados: ${n.favorites} favorito(s), ${n.progressions} progressão(ões) e ${n.tabs} tablatura(s).`;
   } catch (err) {
     $('backup-msg').textContent = err.message;
+    gc('backup/importar-erro');
   }
   applyPrefs(); renderLibrary(); renderViewer(); renderReverse(); renderTabList();
 });
 $('apagar-tudo').addEventListener('click', () => {
   if (!confirm('Apagar todos os favoritos, progressões e preferências? Exporte um backup antes, se quiser guardá-los.')) return;
+  gc('dados/apagar-tudo');
   store.clear();
   state.rehearsal = null;
   applyPrefs(); renderLibrary(); renderViewer(); renderRehearsal(); renderReverse(); renderTabList();
@@ -611,13 +656,14 @@ function renderReverse({ keepInput = false } = {}) {
     return;
   }
   const found = identifyChord(rev.frets, state.instrument, state.tuning);
+  trackEventDebounced('identificar', `identificar/${found.length ? 'encontrou' : 'nada'}/${state.instrument}`, 2000);
   msg.textContent = !found.length ? 'Nenhum acorde conhecido com essas notas.'
     : `${found.length === 1 ? 'Encontrado' : `${found.length} possibilidades`} — toque para abrir no dicionário:`;
   list.replaceChildren(...found.map(r => {
     const li = document.createElement('li');
     const notes = [r.rootInBass ? 'tônica no baixo' : `baixo em ${r.bassName}`];
     if (r.omitted) notes.push(`omite ${r.omitted} nota${r.omitted > 1 ? 's' : ''}`);
-    const b = button('', 'result-card', () => { selectChord(r.chord, { frets: rev.frets }); showView('acordes'); revealViewer(); },
+    const b = button('', 'result-card', () => { gc('identificar/abrir-resultado'); selectChord(r.chord, { frets: rev.frets }); showView('acordes'); revealViewer(); },
       { 'aria-label': `Abrir ${r.symbol}: ${chordTitle(r.chord)}, ${notes.join(', ')}` });
     b.append(Object.assign(document.createElement('strong'), { textContent: r.symbol }),
       Object.assign(document.createElement('span'), { textContent: chordTitle(r.chord) }),
@@ -646,6 +692,7 @@ function setupPWA() {
     let waiting = null, reloading = false;
     const offer = w => { waiting = w; banner.hidden = false; };
     $('atualizar').addEventListener('click', () => {
+      gc('pwa/atualizar');
       if (!waiting) return location.reload();
       waiting.postMessage({ type: 'SKIP_WAITING' });
     });
@@ -678,16 +725,19 @@ function setupPWA() {
     deferred = e;
     install.hidden = false;
   });
-  window.addEventListener('appinstalled', () => { deferred = null; install.hidden = true; });
+  window.addEventListener('appinstalled', () => { deferred = null; install.hidden = true; gc('pwa/instalado'); });
+  gc(standalone ? 'abrir/app-instalado' : 'abrir/navegador');
   if (ios && !standalone) install.hidden = false;
   install.addEventListener('click', async () => {
     if (deferred) {
       deferred.prompt();
       const { outcome } = await deferred.userChoice;
+      gc(`pwa/instalar-${outcome === 'accepted' ? 'aceito' : 'recusado'}`);
       if (outcome === 'accepted') install.hidden = true;
       deferred = null;
     } else if (ios) {
       $('ios-instalar').showModal();
+      gc('pwa/instalar-ios-instrucoes');
     }
   });
 }
@@ -703,8 +753,14 @@ function showView(v) {
   });
   if (v !== 'acordes') endTour();
   window.scrollTo({ top: 0 });
+  trackViewOf(v);
 }
 document.querySelectorAll('.bottom-nav [data-go]').forEach(b => b.addEventListener('click', () => showView(b.dataset.go)));
+const VIEW_TITLES = { acordes: 'Acordes', repertorio: 'Repertório', identificar: 'Identificar', tablatura: 'Tablatura' };
+function trackViewOf(v) {
+  if (v === 'tablatura' && tabPane() !== 'biblioteca') return trackView(`/tablatura/${tabPane()}`, `Tablatura — ${tabPane()}`);
+  trackView(`/${v}`, VIEW_TITLES[v] || v);
+}
 
 /** No celular, se a página rolou para além do diagrama (ex.: análise), volta até ele. */
 function revealViewer() {
@@ -740,7 +796,9 @@ function addSwipe(el, onSwipe) {
   el.addEventListener('click', e => { if (swiped) { e.stopPropagation(); e.preventDefault(); swiped = false; } }, true);
 }
 addSwipe($('diagrama'), d => {
-  if (move(d) && !seen('swipe')) { markSeen('swipe'); $('dica-deslizar-vis').hidden = true; }
+  const moved = move(d);
+  if (moved) gc('posicao/deslizar', { throttleMs: 10000 });
+  if (moved && !seen('swipe')) { markSeen('swipe'); $('dica-deslizar-vis').hidden = true; }
 });
 addSwipe($('palco-diagrama'), d => goRehearsal(state.rehearsal.pos + d));
 
@@ -769,6 +827,7 @@ function showTour(i) {
 }
 function endTour() {
   if (tourStep < 0) return;
+  gc(tourStep === TOUR.length - 1 ? 'tour/concluir' : `tour/sair-no-passo-${tourStep + 1}`);
   tourStep = -1;
   $('tour').hidden = true;
   document.querySelector('.tour-on')?.classList.remove('tour-on');
@@ -992,6 +1051,7 @@ function tabPlay(from = null, { countIn = $('tab-contagem').checked } = {}) {
   tabStop();
   const p = tabParse();
   if (!p || !unlock()) return;
+  gc(`tablatura/tocar${TAB.a >= 0 || TAB.b >= 0 ? '-trecho' : ''}`, { throttleMs: 5000 });
   checkSound();
   const r = tabRange();
   if (from === null || from < r.lo || from > r.hi) from = r.lo;
@@ -1040,6 +1100,7 @@ function renderAB() {
 }
 
 function setMark(which) {
+  gc('tablatura/marcar-trecho', { throttleMs: 10000 });
   if (!TAB.parsed) return;
   const ev = TAB.playing && TAB.on >= 0 ? TAB.on : TAB.cursor;
   if (ev < 0) return notify('Toque numa nota (ou selecione na grade) para marcar');
@@ -1074,6 +1135,7 @@ function gridCommit() {
 }
 
 function setTabMode(mode) {
+  if (mode !== TAB.mode) gc(`tablatura/modo-${mode}`);
   tabStop();
   TAB.mode = mode;
   $('tab-modo-texto').setAttribute('aria-pressed', String(mode === 'texto'));
@@ -1267,6 +1329,7 @@ function showTabPane(pane) {
   const sec = document.querySelector('.tabmod');
   if (pane !== 'biblioteca' && !TAB.open) pane = 'biblioteca';
   if (pane === 'biblioteca') tabStop();
+  if (sec.dataset.tabview !== pane && document.body.dataset.view === 'tablatura') trackView(`/tablatura${pane === 'biblioteca' ? '' : '/' + pane}`, `Tablatura — ${pane}`);
   sec.dataset.tabview = pane;
   $('tab-ver').setAttribute('aria-pressed', String(pane === 'player'));
   $('tab-editar').setAttribute('aria-pressed', String(pane === 'editar'));
@@ -1298,6 +1361,7 @@ function renderSongs() {
       const li = document.createElement('li');
       const multi = Object.keys(i.tunings).length > 1;
       const b = button('', 'btn open', () => {
+        gc(`tablatura/musica/${s.instrument}/${gcSlug(s.name)}`, { title: `Música: ${s.name} (${i.name})` });
         loadTab({ name: s.name, instrument: s.instrument, tuning: s.tuning, text: s.text, bpm: s.bpm, unit: s.unit });
         showTabPane('player');
       }, { title: `Abrir ${s.name}` });
@@ -1336,7 +1400,8 @@ async function importXML(file) {
     const head = new Uint8Array(buf, 0, Math.min(2, buf.byteLength));
     const zip = head[0] === 0x50 && head[1] === 0x4b; // "PK": .mxl compactado
     const r = parseMusicXML(zip ? await unzipMXL(buf) : new TextDecoder().decode(buf));
-    if (r.error) { $('tab-msg').textContent = r.error; return; }
+    if (r.error) { $('tab-msg').textContent = r.error; gc('tablatura/importar-musicxml-erro'); return; }
+    gc(`tablatura/importar-musicxml${zip ? '-mxl' : ''}`);
     const parts = r.parts.map((p, k) => ({ p, k })).filter(x => x.p.notes.length);
     TAB.xml = { ...r, file: file.name.replace(/\.[^.]+$/, '') };
     $('tab-parte').replaceChildren(...parts.map(({ p, k }) => Object.assign(document.createElement('option'), {
@@ -1348,6 +1413,7 @@ async function importXML(file) {
     showTabPane('player');
   } catch (e) {
     $('tab-msg').textContent = `Não foi possível importar: ${e.message}`;
+    gc('tablatura/importar-musicxml-erro');
   }
 }
 
@@ -1386,6 +1452,7 @@ $('tab-ver').addEventListener('click', () => showTabPane('player'));
 $('tab-editar').addEventListener('click', () => showTabPane('editar'));
 $('tab-voltar').addEventListener('click', () => showTabPane('biblioteca'));
 $('tab-nova').addEventListener('click', () => {
+  gc('tablatura/nova');
   loadTab({ name: '', instrument: state.instrument, tuning: state.tuning, text: '', bpm: 90, unit: 16 });
   setTabMode('texto');
   showTabPane('editar');
@@ -1410,6 +1477,7 @@ $('tab-a').addEventListener('click', () => setMark('a'));
 $('tab-b').addEventListener('click', () => setMark('b'));
 $('tab-ab-limpar').addEventListener('click', () => { TAB.a = TAB.b = -1; renderAB(); });
 $('tab-exemplo').addEventListener('click', () => {
+  gc('tablatura/exemplo');
   loadTab({ name: 'Exemplo (C · G/B · Am · F)', instrument: 'violao', tuning: 'padrao', text: TAB_EXAMPLE });
   showTabPane('player');
 });
@@ -1430,6 +1498,7 @@ $('tab-salvar').addEventListener('click', () => {
   TAB.editId = saved?.id ?? null;
   renderTabList();
   if (!saved) return notify('Não foi possível salvar');
+  gc('tablatura/salvar');
   setDirty(false);
   if (!store.prefs().saveWarn || !$('tab-salva').showModal) return notify('Tablatura salva neste aparelho');
   $('tab-salva-nao-avisar').checked = false;
@@ -1439,9 +1508,10 @@ $('tab-salvar').addEventListener('click', () => {
 const slug = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w-]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'tablatura';
 $('tab-salva-exportar').addEventListener('click', () => {
   const tab = store.tabs().find(t => t.id === TAB.editId);
+  if (tab) gc('tablatura/exportar');
   if (tab) downloadJSON(store.exportTabJSON(tab.id), `tablatura-${slug(tab.name)}-${today()}.json`);
 });
-$('tab-salva-backup').addEventListener('click', exportBackup);
+$('tab-salva-backup').addEventListener('click', () => { gc('backup/exportar-ao-salvar-tab'); exportBackup(); });
 $('tab-salva').addEventListener('close', () => {
   if ($('tab-salva-nao-avisar').checked) store.setPref('saveWarn', false);
 });
@@ -1480,6 +1550,11 @@ applyPrefs();
 if (!seen('cordas')) { $('dica-cordas').hidden = false; markSeen('cordas'); }
 renderLibrary();
 window.addEventListener('hashchange', () => { if (applyRoute(location.hash)) showView('acordes'); });
+// Página inicial: a seção aberta; vindo de um link com acorde (#/violao/C7M), conta também o link.
+trackViewOf(document.body.dataset.view);
+if (location.hash.length > 2) gc('abrir/link-de-acorde');
+window.addEventListener('error', e => gc(`erro/js/${gcSlug(e.message, 60)}`, { throttleMs: 60000 }));
+window.addEventListener('unhandledrejection', e => gc(`erro/promise/${gcSlug(e.reason?.message || e.reason, 60)}`, { throttleMs: 60000 }));
 if (!applyRoute(location.hash)) {
   routeMode = 'replace';
   selectChord(state.chord);
