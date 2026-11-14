@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Logo do Dicionário de Acordes: diagrama do acorde de Dó (x32010). Mesmo desenho de tools/gen-icons.mjs. -->
+  <rect width="64" height="64" rx="14" fill="#b5532a"/>
+  <g transform="translate(6.4 6.4) scale(.8)" fill="#fff8f0">
+    <rect x="13" y="13" width="38" height="4" rx="1"/>
+    <path d="M14 17V54M21.2 17V54M28.4 17V54M35.6 17V54M42.8 17V54M50 17V54M14 27H50M14 37H50M14 47H50" stroke="#fff8f0" stroke-width="2" fill="none"/>
+    <circle cx="21.2" cy="42" r="4.2"/><circle cx="28.4" cy="32" r="4.2"/><circle cx="42.8" cy="22" r="4.2"/>
+  </g>
+</svg>

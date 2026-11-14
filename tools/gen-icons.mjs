@@ -1,5 +1,5 @@
 // gen-icons.mjs — gera os ícones PNG do PWA sem dependências (node tools/gen-icons.mjs).
-// Desenho: diagrama do acorde C (x32010) claro sobre fundo terracota (--accent).
+// Desenho: logo (diagrama do acorde C, x32010) claro sobre fundo terracota (--accent); igual a icons/logo.svg.
 import { deflateSync } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -39,13 +39,13 @@ const roundRect = r => (x, y) => {
   return dx * dx + dy * dy <= r * r;
 };
 
+// Mesmo desenho de icons/logo.svg (logo escolhido, opção A): grade 64×64 reduzida a 80% e centrada.
 function diagramShapes() {
-  const xs = [0, 1, 2, 3, 4, 5].map(i => 0.25 + i * 0.1);
-  const top = 0.32, fh = 0.12, lw = 0.011;
-  const s = [rect(0.25 - lw, top - 0.045, 0.75 + lw, top + lw)]; // pestana (nut)
-  for (const x of xs) s.push(rect(x - lw, top, x + lw, top + 4 * fh));
-  for (let r = 1; r <= 4; r++) s.push(rect(0.25 - lw, top + r * fh - lw, 0.75 + lw, top + r * fh + lw));
-  for (const [i, f] of [[1, 3], [2, 2], [4, 1]]) s.push(circle(xs[i], top + (f - 0.5) * fh, 0.043));
+  const P = X => (6.4 + 0.8 * X) / 64, xs = [14, 21.2, 28.4, 35.6, 42.8, 50];
+  const s = [rect(P(13), P(13), P(51), P(17))]; // pestana (nut)
+  for (const x of xs) s.push(rect(P(x - 1), P(17), P(x + 1), P(54)));
+  for (const y of [27, 37, 47]) s.push(rect(P(14), P(y - 1), P(50), P(y + 1)));
+  for (const [x, y] of [[21.2, 42], [28.4, 32], [42.8, 22]]) s.push(circle(P(x), P(y), (0.8 * 4.2) / 64)); // Dó: x32010
   return s;
 }
 

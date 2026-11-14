@@ -27,8 +27,7 @@ python -m http.server 8000
 - Sintetizador Karplus-Strong: dedilhado, batida e corda isolada (clique no diagrama).
 - PWA: instalável (botão “Instalar”; no iPhone, instruções de “Adicionar à Tela de Início”) e 100% offline, áudio incluído.
 - Favoritos e progressões com modo ensaio (anterior/próximo/tocar), salvos no navegador; backup em JSON.
-- Tablaturas de músicas em domínio público para estudar (Für Elise, Pachelbel, Ode à Alegria, Noite Feliz…) em cada instrumento; geradas por `node tools/gen-songs.mjs`.
-- Progressões para estudo prontas (pop, brasileira, jazz/bossa, blues, clássica) em qualquer tom, para ensaiar ou copiar e criar a sua.
+- Progressões para estudo prontas (pop, brasileira, jazz/bossa, blues, clássica) em qualquer tom, com músicas conhecidas que as usam; o ensaio pode tocar a progressão sozinho, mostrando as notas de cada acorde.
 - Modo canhoto, tema claro/escuro/automático e links compartilháveis (`#/violao/C7M/2`, `#/viola/rioAbaixo/G%2FB/2`).
 - Identificador reverso: monte um shape no braço (ou digite `x32010`) e veja os nomes possíveis.
 - Feito para o celular: abas inferiores, deslizar para trocar de posição e **modo palco** (tela cheia, tela sempre acesa, compatível com pedaleira Bluetooth).
@@ -51,6 +50,7 @@ Os ícones são gerados por `node tools/gen-icons.mjs`.
 | `js/diagram.js` | Renderização SVG |
 | `js/audio.js` | Sintetizador (Web Audio) |
 | `js/storage.js` | Favoritos, progressões, preferências, backup e rota da URL |
+| `js/progressions.js` | Progressões para estudo (dados, músicas de exemplo e transposição) |
 | `js/app.js` | Interface, PWA (instalação/atualização) |
 | `js/analytics.js` | Métricas de uso anônimas (GoatCounter, sem cookies; desligável em Ajustes) |
 | `sw.js`, `manifest.json`, `icons/` | PWA |

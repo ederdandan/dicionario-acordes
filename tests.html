@@ -22,14 +22,11 @@
 </main>
 <script type="module">
 import { parseChord } from './js/parser.js';
-import { chordNotes, CHORD_TYPES, ROOT_GRID, noteToMidi } from './js/theory.js';
+import { chordNotes, CHORD_TYPES, ROOT_GRID, noteToMidi, pcOf } from './js/theory.js';
 import { getVoicings, checkShape, curatedFor, curatedReport, identifyChord } from './js/voicings.js';
 import { createStorage, formatRoute, parseRoute, splitProgression } from './js/storage.js';
-import { parseTab, stepSeconds, TAB_EXAMPLE, eventsToGrid, gridToText, gridStarts, tabLabels } from './js/tab.js';
 import { INSTRUMENTS } from './js/instruments.js';
-import { parseMusicXML, partToGrid, matchInstrument, hasTab, unzipMXL } from './js/musicxml.js';
 import { renderDiagram } from './js/diagram.js';
-import { SONG_TABS } from './js/songs.js';
 import { STUDY_PROGRESSIONS, STUDY_KEYS, transposeProgression, transposeChord } from './js/progressions.js';
 import { play, setContext, activeVoices, voicesFor, ksSamples } from './js/audio.js';
 
@@ -340,155 +337,6 @@ const firstPc = (v, cs) => { const k = v.frets.findIndex(f => f >= 0); return (c
   report('Reverso reconhece a 1ª posição de todos os tipos × 12 tônicas em todos os instrumentos', !miss.length, miss.slice(0, 8).join('; ') + (miss.length > 8 ? ` … (+${miss.length - 8})` : ''));
 }
 
-// ---------- Fase 6a: Tablatura ----------
-{
-  const ex = parseTab(TAB_EXAMPLE, 6);
-  report('parseTab: exemplo de 2 blocos × 6 linhas com barras', !ex.error && ex.blocks.length === 2 && ex.events.length === 26 && ex.events[0].frets.join() === '-1,3,-1,-1,-1,-1', ex.error || `${ex.events.length} eventos, ${ex.steps} passos`);
-  const steps = ex.events.map(e => e.step);
-  report('parseTab: eventos em ordem crescente de tempo', steps.every((x, i) => !i || x > steps[i - 1]));
-  const two = parseTab(`e|--10--12--|
-B|-----------|
-G|-----------|
-D|-----------|
-A|-----------|
-E|-----------|`, 6);
-  report('parseTab: "10" e "12" são uma nota só', two.events.length === 2 && two.events[0].frets[5] === 10 && two.events[1].frets[5] === 12, JSON.stringify(two.events));
-  report('parseTab: rejeita bloco com nº de linhas errado', !!parseTab(`e|---0---|
-B|---1---|`, 6).error);
-  const ann = parseTab(` E|--5-----4----|
- B|----(E)------| [1]
-G#|-5-----------|
- E|--------A--E7|
- B|-------------|`, 5);
-  report('parseTab: ignora anotações ((E), A, E7) e marcador [1] sem desalinhar', !ann.error && ann.events.length === 3 && ann.ignored.join() === 'E,A,E7', JSON.stringify(ann));
-  const ch = parseTab(` E|--5-----4----|
- B|----(E)------|
-G#|-5-----------|
- E|--------A--E7|
- B|---------PM--|`, 5, { isChord: x => /^[A-G]/.test(x) });
-  report('parseTab: anotação de acorde vira evento no passo da coluna', ch.events.filter(e => e.chord).map(e => `${e.chord}@${e.step}`).join() === 'E@5,A@8,E7@11' && ch.ignored.join() === 'PM' && ch.blocks[0].chords.length === 3, JSON.stringify(ch.events));
-  const fx = parseTab(`   PM-----
-e|-5h7p5-/9-12b14r12-<12>~~-(3)-x-5b-|
-B|---------------------------------|
-G|---------------------------------|
-D|---------------------------------|
-A|---------------------------------|
-E|---------------------------------|`, 6);
-  const fe = fx.events?.map(e => e.fx?.[5]) || [];
-  report('parseTab: técnicas h p / b r ~ ( ) < > x b-sem-alvo e linha de PM',
-    !fx.error && fe[1]?.tech === 'hammer' && fe[1].from === 5 && fe[2]?.tech === 'pull' && fe[3]?.tech === 'slide' && fe[3].slideIn
-    && fe[5]?.tech === 'bend' && fe[5].from === 12 && fe[6]?.tech === 'release' && fe[6].from === 14
-    && fe[7]?.harm === 12 && fe[7].vib && fe[8]?.ghost && fe[9]?.dead && fx.events[9].frets[5] === -1 && fe[10]?.bendUp === 2
-    && fe[0]?.pm && fe[2]?.pm && !fe[3]?.pm && fx.techniques.join() === 'hammer,pull,slide,bend,release,vib,ghost,harm,dead,pm',
-    fx.error || JSON.stringify(fx.events.map(e => e.fx?.[5])));
-  report('parseTab: "xxx" são notas abafadas, não anotação', parseTab(`e|-xxx-0-|
-B|-------|`, 2).events?.length === 4);
-  const uk = parseTab(`A|--0--|
-E|--0--|
-C|--0--|
-G|--2--|`, 4);
-  report('parseTab: ukulele (4 linhas), linha de cima = corda mais aguda', uk.events[0]?.frets.join() === '2,0,0,0', JSON.stringify(uk.events));
-  report('stepSeconds: 120 BPM em 1/16 = 0,125 s; limita BPM a 40–240', stepSeconds(120, 16) === 0.125 && stepSeconds(999, 8) === stepSeconds(240, 8));
-  const KEY = 'dicionario-acordes:teste-tab';
-  localStorage.removeItem(KEY);
-  const a = createStorage({ key: KEY });
-  a.saveTab({ name: 'Ex', text: TAB_EXAMPLE, instrument: 'violao', tuning: 'padrao', bpm: 100, unit: 8 });
-  const bk = createStorage({ key: KEY }).exportJSON();
-  a.clear();
-  const b = createStorage({ key: KEY });
-  b.importJSON(bk);
-  const t = createStorage({ key: KEY }).tabs()[0];
-  report('Tablatura sobrevive a recarregar e a exportar → limpar → importar', t?.text === TAB_EXAMPLE && t.bpm === 100 && t.unit === 8);
-  const one = createStorage({ key: KEY }).exportTabJSON(t.id);
-  b.clear();
-  const c = createStorage({ key: KEY });
-  c.setPref('theme', 'dark');
-  const got = c.importJSON(one);
-  report('Exportar só uma tablatura → importar traz ela sem mexer nas preferências', got.tabs === 1 && got.favorites === 0 && c.tabs()[0]?.text === TAB_EXAMPLE && c.prefs().theme === 'dark' && JSON.parse(one).prefs === undefined);
-  report('Preferência saveWarn: ligada por padrão e persiste desligada', createStorage({ key: KEY + 'x', backend: { getItem: () => null, setItem() {} } }).prefs().saveWarn === true
-    && (c.setPref('saveWarn', false), createStorage({ key: KEY }).prefs().saveWarn === false));
-  localStorage.removeItem(KEY);
-}
-
-// ---------- Fase 6b: Grade ----------
-{
-  const tun = INSTRUMENTS.violao.tunings.padrao;
-  report('tabLabels: violão = E A D G B e; Rio Abaixo = G D g B d', tabLabels(tun).join(' ') === 'E A D G B e' && tabLabels(INSTRUMENTS.viola.tunings.rioAbaixo).join(' ') === 'G D g B d');
-  const ex = parseTab(TAB_EXAMPLE, 6);
-  const g = eventsToGrid(ex, 6);
-  report('eventsToGrid: 1 coluna por instante, durações somam os passos', g.length === 27 && g[0].frets.every(f => f < 0) && g.reduce((s, c) => s + c.dur, 0) === ex.steps, `${g.length} colunas`);
-  const txt = gridToText(g, tabLabels(tun));
-  const back = parseTab(txt, 6);
-  report('Grade → texto → parseTab → grade é idêntica (ida e volta)', !back.error && JSON.stringify(eventsToGrid(back, 6)) === JSON.stringify(g), back.error || '');
-  const cols = [{ frets: [-1, -1, -1, -1, -1, 12], dur: 4 }, { frets: [3, -1, -1, -1, -1, -1], dur: 4 }, { frets: [-1, -1, -1, -1, -1, -1], dur: 8 }, { frets: [0, 2, 2, 1, 0, 0], dur: 16 }];
-  const t2 = gridToText(cols, tabLabels(tun));
-  const p2 = parseTab(t2, 6);
-  report('gridToText: barra a cada compasso, pausa conta tempo, 2 dígitos = 1 nota', !p2.error && p2.events.map(e => e.step).join() === '0,4,16' && p2.events[0].frets[5] === 12 && p2.steps === 32 && t2.startsWith('e|12--------------|0---------------|'), t2);
-  report('gridStarts: passo inicial de cada coluna', gridStarts(cols).join() === '0,4,8,16');
-  const uk = gridToText([{ frets: [0, 0, 0, 3], dur: 1 }], tabLabels(INSTRUMENTS.ukulele.tunings[Object.keys(INSTRUMENTS.ukulele.tunings)[0]]));
-  report('gridToText: ukulele, linha de cima = corda mais aguda; grade curta ainda é lida', parseTab(uk, 4).events[0]?.frets.join() === '0,0,0,3', uk);
-}
-
-// ---------- Fase 6c: MusicXML ----------
-{
-  const tuning = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'].map((n, i) => `<staff-tuning line="${i + 1}"><tuning-step>${n[0]}</tuning-step><tuning-octave>${n[1]}</tuning-octave></staff-tuning>`).join('');
-  const tn = (dur, s, f, extra = '') => `<note>${extra}<pitch><step>C</step><octave>4</octave></pitch><duration>${dur}</duration><notations><technical><string>${s}</string><fret>${f}</fret></technical></notations></note>`;
-  const XML = `<?xml version="1.0" encoding="UTF-8"?>
-<score-partwise version="3.1"><work><work-title>Teste</work-title></work>
-<part-list><score-part id="P1"><part-name>Violão</part-name></score-part><score-part id="P2"><part-name>Piano</part-name></score-part></part-list>
-<part id="P1">
- <measure number="1"><attributes><divisions>2</divisions><time><beats>3</beats><beat-type>4</beat-type></time>
-  <staff-details><staff-lines>6</staff-lines>${tuning}</staff-details></attributes>
-  <direction><sound tempo="100"/></direction>
-  ${tn(2, 5, 3)}${tn(2, 2, 1, '<chord/>')}<note><rest/><duration>1</duration></note>${tn(1, 3, 0).replace('<duration>', '<tie type="start"/><duration>')}
-  <note><grace/><pitch><step>D</step><octave>4</octave></pitch><notations><technical><string>2</string><fret>3</fret></technical></notations></note>
-  <forward><duration>2</duration></forward></measure>
- <measure number="2">${tn(2, 3, 0).replace('<duration>', '<duration>').replace('</duration>', '</duration><tie type="stop"/>')}${tn(2, 1, 12)}
-  <forward><duration>2</duration></forward><backup><duration>6</duration></backup>${tn(6, 6, 0)}</measure>
-</part>
-<part id="P2"><measure number="1"><attributes><divisions>1</divisions></attributes>
-  <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration></note>
-  <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration></note>
-  <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration></note>
-  <note><pitch><step>B</step><alter>-1</alter><octave>4</octave></pitch><duration>1</duration></note></measure></part>
-</score-partwise>`;
-  const r = parseMusicXML(XML);
-  report('parseMusicXML: título, andamento, 2 partes, afinação das cordas', !r.error && r.title === 'Teste' && r.bpm === 100 && r.parts.length === 2 && r.parts[0].strings.join() === '40,45,50,55,59,64', r.error || JSON.stringify(r.parts[0].strings));
-  const p1 = r.parts[0];
-  report('parseMusicXML: acorde, pausa, ligadura (sem novo ataque), ornamento ignorado, backup/forward', p1.notes.map(n => `${n.start}:${n.string}/${n.fret}`).join() === '0:5/3,0:2/1,1.5:3/0,4:1/12,3:6/0' && p1.notes[2].dur === 1.5 && p1.end === 6, p1.notes.map(n => `${n.start}:${n.string}/${n.fret}`).join());
-  report('matchInstrument: afinação E A D G B E → violão padrão; parte sem tablatura → null', JSON.stringify(matchInstrument(p1, INSTRUMENTS)) === '{"instrument":"violao","tuning":"padrao"}' && matchInstrument(r.parts[1], INSTRUMENTS) === null && hasTab(p1) && !hasTab(r.parts[1]));
-  const vio = INSTRUMENTS.violao.tunings.padrao.courses.map(c => noteToMidi(c.notes[0]));
-  const g = partToGrid(p1, vio);
-  report('partToGrid: corda/casa e durações do arquivo (3/4 em colcheias)', g.fromTab && g.unit === 8 && g.measure === 6 && JSON.stringify(g.cols) === JSON.stringify([
-    { frets: [-1, 3, -1, -1, 1, -1], dur: 3 }, { frets: [-1, -1, -1, 0, -1, -1], dur: 3 }, { frets: [0, -1, -1, -1, -1, -1], dur: 2 }, { frets: [-1, -1, -1, -1, -1, 12], dur: 4 }]), JSON.stringify(g));
-  const txt = gridToText(g.cols, tabLabels(INSTRUMENTS.violao.tunings.padrao), { measure: g.measure });
-  const back = parseTab(txt, 6);
-  report('MusicXML → texto da 6a → parseTab: mesmas notas e tempos', !back.error && back.events.map(e => `${e.step}:${e.frets.join('')}`).join() === '0:-13-1-11-1,3:-1-1-10-1-1,6:0-1-1-1-1-1,8:-1-1-1-1-112' && back.steps === 12, back.error || txt);
-  const gp = partToGrid(r.parts[1], vio);
-  report('partToGrid: partitura sem corda/casa → casa mais baixa pela altura', !gp.fromTab && gp.cols.map(c => c.frets.join(' ')).join(' | ') === '-1 -1 -1 -1 1 -1 | -1 -1 -1 -1 -1 0 | -1 -1 -1 -1 -1 3 | -1 -1 -1 -1 -1 6', gp.cols.map(c => c.frets.join(' ')).join(' | '));
-  report('parseMusicXML: rejeita XML inválido e documento que não é MusicXML', !!parseMusicXML('<a><b></a>').error && !!parseMusicXML('<html/>').error);
-  // .mxl: ZIP com container.xml e a partitura comprimida (deflate)
-  const enc = new TextEncoder();
-  const deflate = async s => new Uint8Array(await new Response(new Blob([enc.encode(s)]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer());
-  const files = [['META-INF/container.xml', enc.encode('<container><rootfiles><rootfile full-path="score.xml"/></rootfiles></container>'), 0], ['score.xml', await deflate(XML), 8]];
-  const parts = [], central = [];
-  let off = 0;
-  for (const [name, data, method] of files) {
-    const nm = enc.encode(name), h = new DataView(new ArrayBuffer(30));
-    h.setUint32(0, 0x04034b50, true); h.setUint16(8, method, true); h.setUint32(18, data.length, true); h.setUint16(26, nm.length, true);
-    const c = new DataView(new ArrayBuffer(46));
-    c.setUint32(0, 0x02014b50, true); c.setUint16(10, method, true); c.setUint32(20, data.length, true); c.setUint16(28, nm.length, true); c.setUint32(42, off, true);
-    parts.push(new Uint8Array(h.buffer), nm, data); central.push(new Uint8Array(c.buffer), nm);
-    off += 30 + nm.length + data.length;
-  }
-  const cdSize = central.reduce((s, x) => s + x.length, 0), e = new DataView(new ArrayBuffer(22));
-  e.setUint32(0, 0x06054b50, true); e.setUint16(8, 2, true); e.setUint16(10, 2, true); e.setUint32(12, cdSize, true); e.setUint32(16, off, true);
-  const zip = await new Blob([...parts, ...central, new Uint8Array(e.buffer)]).arrayBuffer();
-  let mxl = '';
-  try { mxl = await unzipMXL(zip); } catch (err) { mxl = err.message; }
-  report('unzipMXL: lê .mxl (ZIP + deflate) pelo container.xml', mxl === XML, mxl.slice(0, 80));
-}
-
 // ---------- Progressões para estudo ----------
 {
   const bad = [];
@@ -503,26 +351,11 @@ G|--2--|`, 4);
   report('Transposição: baixo grafado pelo intervalo (C#/E# em Fá#) e tom C não muda nada',
     transposeProgression(pr('descida-baixo'), 'F#', parseChord).chords[1] === 'C#/E#' && STUDY_PROGRESSIONS.every(p => transposeProgression(p, 'C', parseChord).chords.join() === p.chords.join())
     && transposeChord('Dm7(b5)', 2, parseChord) === 'Em7(b5)');
+  const badSongs = STUDY_PROGRESSIONS.filter(p => !(p.songs?.length >= 2) || p.songs.some(s => !s.t || !s.a || (s.k && !STUDY_KEYS.some(k => pcOf(k) === pcOf(s.k)))));
+  report('Músicas de exemplo: ≥ 2 por progressão, com título, autor e tom válido (quando há)', !badSongs.length, badSongs.map(p => p.id).join(' '));
   const st = createStorage({ key: 'x-estudo', backend: { getItem: () => JSON.stringify({ prefs: { studyKey: 'Bb' } }), setItem() {} } });
   const st2 = createStorage({ key: 'x-estudo', backend: { getItem: () => JSON.stringify({ prefs: { studyKey: 'H<' } }), setItem() {} } });
   report('Preferência studyKey: guarda o tom e rejeita valor inválido', st.prefs().studyKey === 'Bb' && st2.prefs().studyKey === 'C');
-}
-
-// ---------- Músicas para estudar (js/songs.js) ----------
-{
-  const per = Object.keys(INSTRUMENTS).map(i => SONG_TABS.filter(s => s.instrument === i).length);
-  const bad = SONG_TABS.filter(s => {
-    const t = INSTRUMENTS[s.instrument]?.tunings[s.tuning];
-    const r = t && parseTab(s.text, t.courses.length);
-    return !r || r.error || r.events.length < 10 || r.events.some(e => e.frets.some(f => f > 12)) || ![16, 32].includes(s.unit);
-  });
-  report(`Músicas para estudar: ${SONG_TABS.length} tablaturas (≥5 por instrumento), todas lidas pelo player`, per.every(n => n >= 5) && !bad.length, bad.map(s => s.id).join(', '));
-  const fe = SONG_TABS.find(s => s.id === 'violao-furElise'), ev = parseTab(fe.text, 6).events;
-  report('Für Elise no violão: começa Mi–Ré#–Mi–Ré#–Mi–Si–Ré–Dó (e0 B4 e0 B4 e0 B0 B3 B1), uma fusa = metade da semicolcheia',
-    ev.slice(0, 8).map(e => e.frets.join('')).join(' ') === '-1-1-1-1-10 -1-1-1-14-1 -1-1-1-1-10 -1-1-1-14-1 -1-1-1-1-10 -1-1-1-10-1 -1-1-1-13-1 -1-1-1-11-1'
-    && ev[2].step - ev[1].step === 2 && Math.abs(stepSeconds(60, 32) - stepSeconds(60, 16) / 2) < 1e-9);
-  const su = createStorage({ key: 'x-unit', backend: { getItem: () => null, setItem() {} } });
-  report('Tablatura com “Cada traço vale 1/32” é salva com unit 32', su.saveTab({ name: 'x', text: fe.text, instrument: 'violao', tuning: 'padrao', bpm: 65, unit: 32 })?.unit === 32);
 }
 
 // Saída na tela

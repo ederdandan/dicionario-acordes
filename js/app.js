@@ -1,15 +1,12 @@
 // app.js — orquestra interface, estado e eventos.
-import { CATEGORIES, CHORD_TYPES, ROOT_GRID, TYPE_BY_Q, chordNotes, noteToMidi, pcOf, spell, toPt } from './theory.js';
-import { parseMusicXML, partToGrid, matchInstrument, hasTab, unzipMXL } from './musicxml.js';
+import { CATEGORIES, CHORD_TYPES, ROOT_GRID, TYPE_BY_Q, chordNotes, pcOf, spell, toPt } from './theory.js';
 import { parseChord, suggest } from './parser.js';
 import { INSTRUMENTS, DEFAULT_INSTRUMENT, DEFAULT_TUNING } from './instruments.js';
 import { getVoicings, identifyChord } from './voicings.js';
-import { renderDiagram, renderEditor, renderFretboard } from './diagram.js';
-import { play, unlock, scheduleFrets, scheduleClick, stopAll, audioNow, audioLatency, audioState } from './audio.js';
-import { parseTab, stepSeconds, TAB_EXAMPLE, TECH_NAMES, eventsToGrid, gridToText, gridStarts, tabLabels } from './tab.js';
+import { renderDiagram, renderEditor } from './diagram.js';
+import { play, unlock, scheduleFrets, stopAll, audioNow, audioLatency, audioState } from './audio.js';
 import { createStorage, favoriteId, formatRoute, parseRoute, splitProgression } from './storage.js';
 import { STUDY_PROGRESSIONS, STUDY_GROUPS, STUDY_KEYS, transposeProgression } from './progressions.js';
-import { SONG_TABS } from './songs.js';
 import { trackView, trackEvent, trackEventDebounced, setEnabled as setStats, slug as gcSlug } from './analytics.js';
 
 const $ = id => document.getElementById(id);
@@ -256,7 +253,7 @@ function renderAnalysis() {
     const cells = [c.label, f < 0 ? 'x' : String(f), v && v.fingers[i] ? String(v.fingers[i]) : '–', v?.courseNotes[i] || '–'];
     cells.forEach(t => tr.append(Object.assign(document.createElement('td'), { textContent: t })));
     return tr;
-  }).reverse()); // 1ª corda no topo, como na tablatura
+  }).reverse()); // 1ª corda no topo
 }
 
 function render() {
@@ -399,7 +396,6 @@ $('canhoto').addEventListener('change', () => {
   applyPrefs();
   renderViewer();
   renderReverse();
-  renderBoard(TAB.cursor >= 0 && TAB.parsed ? TAB.parsed.events[TAB.cursor]?.frets : null);
 });
 $('ajustes-abrir').addEventListener('click', () => { $('backup-msg').textContent = ''; $('ajustes').showModal(); trackView('/ajustes', 'Ajustes'); });
 $('estatisticas').addEventListener('change', () => {
@@ -485,12 +481,33 @@ function renderStudy() {
       open.append(`▶ ${p.name} `, Object.assign(document.createElement('small'), { textContent: p.roman }),
         Object.assign(document.createElement('span'), { className: 'study-chords', textContent: t.chords.join(' → ') }));
       li.append(open, button('Copiar', 'btn small', () => { gc(`estudo/copiar/${gcSlug(p.id || p.name)}`); copyProgression(name, t.chords); }, { 'aria-label': `Copiar ${p.name} para criar a sua` }));
+      if (p.songs?.length) li.append(studySongs(p, sel.value));
       return li;
     });
     const ul = Object.assign(document.createElement('ul'), { className: 'item-list study-list' });
     ul.append(...items);
     return [Object.assign(document.createElement('h3'), { className: 'study-group', textContent: g }), ul];
   }));
+}
+
+/** Músicas que usam a progressão; as do tom escolhido vêm primeiro e destacadas. Tocar numa leva ao tom original dela. */
+function studySongs(p, key) {
+  const box = Object.assign(document.createElement('div'), { className: 'study-songs' });
+  const inKey = s => s.k && pcOf(s.k) === pcOf(key);
+  const songs = [...p.songs].sort((a, b) => inKey(b) - inKey(a));
+  box.append(Object.assign(document.createElement('small'), { textContent: 'Músicas:' }));
+  for (const s of songs) {
+    const tom = s.k ? `${toPt(s.k)}${p.minor ? ' menor' : ''}` : '';
+    if (!s.k) { box.append(Object.assign(document.createElement('span'), { className: 'chip', textContent: `${s.t} · ${s.a}`, title: 'Tom varia (tradicional)' })); continue; }
+    box.append(button(`${inKey(s) ? '★ ' : ''}${s.t} · ${s.a} · ${tom}`, `chip${inKey(s) ? ' in-key' : ''}`, () => {
+      const k = STUDY_KEYS.find(x => pcOf(x) === pcOf(s.k));
+      gc(`estudo/musica/${gcSlug(s.t)}`);
+      store.setPref('studyKey', k);
+      renderStudy();
+      notify(`${p.name} no tom de “${s.t}”: ${toPt(k)}${p.minor ? ' menor' : ''}`);
+    }, { title: inKey(s) ? 'No tom escolhido (tom original da música)' : `Tom original: ${tom}. Toque para estudar neste tom.` }));
+  }
+  return box;
 }
 
 /** Leva uma progressão para o formulário de "Minhas progressões" (para editar e salvar). */
@@ -549,15 +566,17 @@ $('prog-form').addEventListener('submit', e => {
 });
 
 function startRehearsal(prog) {
+  stopAuto();
   state.rehearsal = { prog, pos: 0 };
   goRehearsal(0);
   showView('acordes');
   revealViewer();
 }
 
-function goRehearsal(pos) {
+function goRehearsal(pos, fromAuto = false) {
   const r = state.rehearsal;
   if (!r || pos < 0 || pos >= r.prog.chords.length) return;
+  if (!fromAuto) stopAuto(); // navegar à mão interrompe o "Tocar progressão"
   r.pos = pos;
   selectChord(parseChord(r.prog.chords[pos])); // render() atualiza a barra de ensaio
 }
@@ -574,13 +593,67 @@ function renderRehearsal() {
   })));
   $('ensaio-anterior').disabled = r.pos <= 0;
   $('ensaio-proximo').disabled = r.pos >= n - 1;
+  $('ensaio-notas').textContent = `${state.chord.symbol}: ${chordNotes(state.chord).names.join(' · ')}`;
   renderStage();
 }
+
+// ---------- Tocar a progressão sozinha (agendada no relógio do áudio) ----------
+const auto = { on: false, timer: 0, ui: [], chord: 0, beat: 0, next: 0, end: 0, frets: [] };
+function startAuto() {
+  const r = state.rehearsal;
+  if (!r || !unlock() || audioNow() === null) return;
+  auto.frets = r.prog.chords.map(s => getVoicings(parseChord(s), state.instrument, state.tuning, { max: 8 })[0]?.frets || null);
+  Object.assign(auto, { on: true, chord: r.pos, beat: 0, next: audioNow() + 0.15, end: 0 });
+  gc('ensaio/tocar-progressao', { title: `Tocar progressão: ${r.prog.name}` });
+  renderAutoBtn();
+  autoTick();
+  checkSound();
+}
+function stopAuto() {
+  if (!auto.on) return;
+  auto.on = false;
+  clearTimeout(auto.timer);
+  auto.ui.forEach(clearTimeout);
+  auto.ui = [];
+  stopAll();
+  renderAutoBtn();
+}
+function autoTick() {
+  if (!auto.on || !state.rehearsal) return;
+  const n = state.rehearsal.prog.chords.length, spb = 60 / +$('ensaio-bpm').value, beats = +$('ensaio-tempos').value;
+  const now = audioNow();
+  if (auto.end && now >= auto.end) { stopAuto(); return; }
+  while (!auto.end && auto.next < now + 0.3) {
+    const i = auto.chord, when = auto.next;
+    if (auto.beat === 0) { // troca o diagrama/notas quando o acorde soa
+      const id = setTimeout(() => { auto.ui = auto.ui.filter(x => x !== id); if (auto.on) goRehearsal(i, true); },
+        Math.max(0, (when - now + audioLatency()) * 1000));
+      auto.ui.push(id);
+    }
+    if (auto.frets[i]) scheduleFrets(auto.frets[i], state.instrument, tun(), when,
+      { strum: auto.beat === 0 ? 0.02 : 0.012, gain: auto.beat === 0 ? 1 : 0.5, dur: spb });
+    auto.next += spb;
+    if (++auto.beat >= beats) {
+      auto.beat = 0;
+      if (++auto.chord >= n) {
+        if ($('ensaio-repetir').checked) auto.chord = 0;
+        else auto.end = auto.next + spb; // deixa o último acorde soar
+      }
+    }
+  }
+  auto.timer = setTimeout(autoTick, 60);
+}
+function renderAutoBtn() {
+  const b = $('ensaio-auto');
+  b.textContent = auto.on ? '■ Parar' : '▶ Tocar progressão';
+  b.setAttribute('aria-pressed', String(auto.on));
+}
+$('ensaio-auto').addEventListener('click', () => (auto.on ? stopAuto() : startAuto()));
 
 $('ensaio-anterior').addEventListener('click', () => goRehearsal(state.rehearsal.pos - 1));
 $('ensaio-proximo').addEventListener('click', () => goRehearsal(state.rehearsal.pos + 1));
 $('ensaio-tocar').addEventListener('click', () => playCurrent('batida'));
-$('ensaio-sair').addEventListener('click', () => { gc('ensaio/sair'); closeStage(); state.rehearsal = null; renderRehearsal(); });
+$('ensaio-sair').addEventListener('click', () => { gc('ensaio/sair'); stopAuto(); closeStage(); state.rehearsal = null; renderRehearsal(); });
 $('ensaio-palco').addEventListener('click', () => { gc('ensaio/palco'); openStage(); });
 
 // ---------- Backup (JSON) ----------
@@ -607,19 +680,19 @@ $('importar-arquivo').addEventListener('change', async e => {
   try {
     const n = store.importJSON(await file.text());
     gc('backup/importar');
-    $('backup-msg').textContent = `Importados: ${n.favorites} favorito(s), ${n.progressions} progressão(ões) e ${n.tabs} tablatura(s).`;
+    $('backup-msg').textContent = `Importados: ${n.favorites} favorito(s) e ${n.progressions} progressão(ões).`;
   } catch (err) {
     $('backup-msg').textContent = err.message;
     gc('backup/importar-erro');
   }
-  applyPrefs(); renderLibrary(); renderViewer(); renderReverse(); renderTabList();
+  applyPrefs(); renderLibrary(); renderViewer(); renderReverse();
 });
 $('apagar-tudo').addEventListener('click', () => {
   if (!confirm('Apagar todos os favoritos, progressões e preferências? Exporte um backup antes, se quiser guardá-los.')) return;
   gc('dados/apagar-tudo');
   store.clear();
   state.rehearsal = null;
-  applyPrefs(); renderLibrary(); renderViewer(); renderRehearsal(); renderReverse(); renderTabList();
+  applyPrefs(); renderLibrary(); renderViewer(); renderRehearsal(); renderReverse();
   $('backup-msg').textContent = 'Dados apagados.';
 });
 
@@ -756,9 +829,8 @@ function showView(v) {
   trackViewOf(v);
 }
 document.querySelectorAll('.bottom-nav [data-go]').forEach(b => b.addEventListener('click', () => showView(b.dataset.go)));
-const VIEW_TITLES = { acordes: 'Acordes', repertorio: 'Repertório', identificar: 'Identificar', tablatura: 'Tablatura' };
+const VIEW_TITLES = { acordes: 'Acordes', repertorio: 'Repertório', identificar: 'Identificar' };
 function trackViewOf(v) {
-  if (v === 'tablatura' && tabPane() !== 'biblioteca') return trackView(`/tablatura/${tabPane()}`, `Tablatura — ${tabPane()}`);
   trackView(`/${v}`, VIEW_TITLES[v] || v);
 }
 
@@ -875,6 +947,7 @@ function renderStage() {
   $('palco-prog').textContent = prog.name;
   $('palco-contador').textContent = `${pos + 1}/${n}`;
   $('palco-simbolo').textContent = state.chord.symbol;
+  $('palco-notas').textContent = chordNotes(state.chord).names.join(' · ');
   const v = state.voicings[state.idx];
   $('palco-diagrama').replaceChildren(v
     ? renderDiagram(v, inst(), tun(), { leftHanded: lefty(), onString: course => playCurrent('dedilhar', course) })
@@ -910,618 +983,6 @@ window.addEventListener('popstate', () => {
   if (leaving || ignoreHash) { ignoreHash = false; syncHash(); }
 });
 
-// ---------- Tablatura (Fases 6a/6b) ----------
-// Agendador com antecedência no relógio do Web Audio + destaque por quadro (requestAnimationFrame).
-// O texto é a fonte de verdade (é o que se salva); a grade (6b) edita colunas e regrava o texto.
-const TAB = {
-  parsed: null, playing: false, timer: 0, raf: 0, start: 0, next: 0, dt: 0.1, queue: [], spans: [], on: -1, editId: null,
-  mode: 'texto', grid: null, sel: { col: 0, course: 0 }, colEv: [], cursor: -1, a: -1, b: -1, digit: null,
-  open: false, dirty: false, // há uma tablatura aberta no Player/Editar; alterações não salvas
-};
-const tabKey = () => $('tab-instrumento').value.split('/');
-const tabTuning = () => { const [i, t] = tabKey(); return INSTRUMENTS[i].tunings[t]; };
-const tabSpeed = () => +$('tab-vel').value / 100;
-const DURS = [1, 2, 3, 4, 6, 8, 12, 16];
-
-function fillTabInstruments(value = `${state.instrument}/${state.tuning}`) {
-  $('tab-instrumento').replaceChildren(...Object.values(INSTRUMENTS).flatMap(i => Object.entries(i.tunings).map(([tid, t]) =>
-    Object.assign(document.createElement('option'), { value: `${i.id}/${tid}`, textContent: `${i.name}${Object.keys(i.tunings).length > 1 ? ' · ' + (t.short || t.name) : ''}` }))));
-  $('tab-instrumento').value = value;
-  if (!$('tab-instrumento').value) $('tab-instrumento').selectedIndex = 0;
-}
-
-function tabParse() {
-  const [i, t] = tabKey();
-  const text = $('tab-texto').value;
-  const r = text.trim() ? parseTab(text, INSTRUMENTS[i].tunings[t].courses.length, { isChord: s => !!parseChord(s) }) : { error: '' };
-  const chords = [...new Set((r.events || []).filter(e => e.chord).map(e => e.chord))];
-  const play = $('tab-acordes').checked;
-  // Acorde da anotação: 1ª posição gerada para o instrumento/afinação escolhidos
-  for (const e of r.events || []) if (e.chord) e.frets = (play && getVoicings(parseChord(e.chord), i, t, { max: 1 })[0]?.frets) || e.frets;
-  $('tab-msg').textContent = r.error || [
-    chords.length ? `Acordes${play ? '' : ' (sem som)'}: ${chords.join(', ')}` : '',
-    r.techniques?.length ? `Técnicas: ${r.techniques.map(k => TECH_NAMES[k]).join(', ')}` : '',
-    r.ignored?.length ? `Anotações ignoradas: ${r.ignored.join(', ')}` : '',
-  ].filter(Boolean).join(' · ');
-  TAB.parsed = r.error === undefined ? r : null;
-  const n = TAB.parsed?.events.length ?? 0;
-  if (TAB.a >= n || TAB.b >= n) TAB.a = TAB.b = -1;
-  if (TAB.cursor >= n) TAB.cursor = -1;
-  renderTabView();
-  return TAB.parsed;
-}
-
-function renderTabView() {
-  const p = TAB.parsed;
-  TAB.spans = [];
-  TAB.on = -1;
-  if (TAB.mode === 'grade') renderGrid();
-  if (!p) { $('tab-view').replaceChildren(); renderAB(); return renderBoard(null); }
-  const w = Math.max(0, ...p.blocks.flatMap(b => b.labels.map(l => l.length)));
-  $('tab-view').replaceChildren(...p.blocks.map(b => {
-    const pre = Object.assign(document.createElement('pre'), { className: 'tab-block' });
-    b.lines.forEach((line, li) => {
-      pre.append((b.labels[li] || '').padEnd(w) + '|');
-      let pos = 0;
-      for (const nt of [...b.notes, ...b.chords].filter(x => x.line === li).sort((x, y) => x.col - y.col)) {
-        pre.append(line.slice(pos, nt.col));
-        const sp = Object.assign(document.createElement('span'), { className: nt.text ? 'tn tc' : 'tn', textContent: line.substr(nt.col, nt.len) });
-        sp.dataset.ev = nt.ev;
-        const tips = fxNames(nt.fx);
-        if (tips) { sp.title = tips; sp.classList.add('tfx'); }
-        (TAB.spans[nt.ev] ||= []).push(sp);
-        pre.append(sp);
-        pos = nt.col + nt.len;
-      }
-      pre.append(line.slice(pos) + (li < b.lines.length - 1 ? '\n' : ''));
-    });
-    return pre;
-  }));
-  renderAB();
-  renderBoard(TAB.cursor >= 0 ? p.events[TAB.cursor].frets : null);
-}
-
-/** Descrição das técnicas de uma nota (dica ao passar o mouse). */
-function fxNames(f) {
-  if (!f) return '';
-  const k = [f.tech, ...['vib', 'ghost', 'harm', 'dead', 'pm', 'ring'].filter(x => f[x] !== undefined), f.bendUp && 'bend'];
-  return [...new Set(k.filter(Boolean))].map(x => TECH_NAMES[x]).join(' · ');
-}
-
-/** Braço do instrumento com as casas do evento atual (ou vazio). */
-function renderBoard(frets) {
-  const [i] = tabKey(), tn = tabTuning();
-  const all = TAB.parsed?.events.flatMap(e => e.frets) || [];
-  const maxFret = Math.min(24, Math.max(12, ...all));
-  $('tab-braco').replaceChildren(renderFretboard(frets || new Array(tn.courses.length).fill(-1), INSTRUMENTS[i], tn, { maxFret, leftHanded: lefty() }));
-}
-
-function tabHighlight(ev) {
-  if (ev < TAB.on) { TAB.spans.flat().forEach(s => s.classList.remove('on', 'done')); TAB.on = -1; } // recomeço (repetir)
-  (TAB.spans[TAB.on] || []).forEach(s => { s.classList.remove('on'); s.classList.add('done'); });
-  const cur = TAB.spans[ev] || [];
-  cur.forEach(s => { s.classList.remove('done'); s.classList.add('on'); });
-  const sp = cur[0], box = sp?.closest('.tab-block, .grid-wrap');
-  if (box) {
-    box.scrollLeft = sp.offsetLeft - box.clientWidth / 2;
-    const prev = TAB.spans[TAB.on]?.[0]?.closest('.tab-block, .grid-wrap');
-    if (prev !== box) box.scrollIntoView({ block: 'nearest' });
-  }
-  TAB.on = ev;
-  TAB.cursor = ev;
-  renderBoard(TAB.parsed.events[ev].frets);
-}
-
-/** Trecho tocado: A–B (sempre em laço) ou a tablatura inteira (laço se "Repetir"). */
-function tabRange() {
-  const ev = TAB.parsed.events;
-  const ab = TAB.a >= 0 && TAB.b >= 0;
-  const lo = ab ? TAB.a : 0, hi = ab ? TAB.b : ev.length - 1;
-  return { lo, hi, loop: ab || $('tab-repetir').checked, from: ev[lo].step, to: ev[hi + 1]?.step ?? TAB.parsed.steps };
-}
-
-function tabSchedule() {
-  const p = TAB.parsed, ev = p.events, r = tabRange();
-  const ahead = audioNow() + (document.hidden ? 1.5 : 0.3); // em segundo plano o setInterval é atrasado
-  for (;;) {
-    if (TAB.next > r.hi) {
-      const end = TAB.start + r.to * TAB.dt;
-      if (!r.loop) { if (audioNow() > end && !TAB.queue.length) tabStop(false); return; }
-      if (end > ahead) return;
-      TAB.start = end - r.from * TAB.dt; TAB.next = r.lo; // volta ao início do trecho, emendado no tempo
-    }
-    const e = ev[TAB.next], when = TAB.start + e.step * TAB.dt;
-    if (when > ahead) return;
-    const dur = ((ev[TAB.next + 1]?.step ?? p.steps) - e.step) * TAB.dt;
-    scheduleFrets(e.frets, TAB.inst, TAB.tun, when, e.chord ? { strum: 0.018, gain: 0.6 } : { fx: e.fx, dur });
-    TAB.queue.push({ time: when, ev: TAB.next++ });
-  }
-}
-
-function tabDraw() {
-  if (!TAB.playing) return;
-  const now = audioNow() - audioLatency(); // o destaque acompanha o que se OUVE
-  let cur = -1;
-  while (TAB.queue.length && TAB.queue[0].time <= now) cur = TAB.queue.shift().ev;
-  if (cur >= 0) tabHighlight(cur);
-  TAB.raf = requestAnimationFrame(tabDraw);
-}
-
-function tabPlay(from = null, { countIn = $('tab-contagem').checked } = {}) {
-  tabStop();
-  const p = tabParse();
-  if (!p || !unlock()) return;
-  gc(`tablatura/tocar${TAB.a >= 0 || TAB.b >= 0 ? '-trecho' : ''}`, { throttleMs: 5000 });
-  checkSound();
-  const r = tabRange();
-  if (from === null || from < r.lo || from > r.hi) from = r.lo;
-  const [i, t] = tabKey();
-  const bpm = Math.min(240, Math.max(40, +$('tab-bpm').value || 90));
-  Object.assign(TAB, {
-    inst: i, tun: INSTRUMENTS[i].tunings[t], dt: stepSeconds(bpm, +$('tab-unidade').value) / tabSpeed(),
-    next: from, queue: [], playing: true,
-  });
-  let t0 = audioNow() + 0.12;
-  if (countIn) { // 1 compasso de 4 tempos no andamento de estudo
-    const beat = 60 / bpm / tabSpeed();
-    for (let k = 0; k < 4; k++) scheduleClick(t0 + k * beat, k === 0);
-    t0 += 4 * beat;
-  }
-  TAB.start = t0 - p.events[from].step * TAB.dt;
-  $('tab-play').textContent = '■ Parar';
-  tabSchedule();
-  TAB.timer = setInterval(tabSchedule, 50);
-  TAB.raf = requestAnimationFrame(tabDraw);
-}
-
-function tabStop(silence = true) {
-  clearInterval(TAB.timer);
-  cancelAnimationFrame(TAB.raf);
-  if (silence && TAB.playing) stopAll();
-  TAB.playing = false;
-  TAB.queue = [];
-  TAB.spans.flat().forEach(s => s.classList.remove('on', 'done'));
-  TAB.on = -1;
-  $('tab-play').textContent = '▶ Tocar';
-}
-
-// ----- Repetição A–B -----
-function renderAB() {
-  TAB.spans.flat().forEach(s => s.classList.remove('mark-a', 'mark-b', 'in-ab'));
-  const ab = TAB.a >= 0 && TAB.b >= 0;
-  if (ab) for (let e = TAB.a; e <= TAB.b; e++) (TAB.spans[e] || []).forEach(s => s.classList.add('in-ab'));
-  (TAB.spans[TAB.a] || []).forEach(s => s.classList.add('mark-a'));
-  (TAB.spans[TAB.b] || []).forEach(s => s.classList.add('mark-b'));
-  $('tab-ab').textContent = ab ? `Trecho: nota ${TAB.a + 1} → ${TAB.b + 1} (repete em laço)`
-    : TAB.a >= 0 ? `Início na nota ${TAB.a + 1} — marque o fim` : TAB.b >= 0 ? `Fim na nota ${TAB.b + 1} — marque o início` : '';
-  $('tab-a').setAttribute('aria-pressed', String(TAB.a >= 0));
-  $('tab-b').setAttribute('aria-pressed', String(TAB.b >= 0));
-  $('tab-ab-limpar').disabled = TAB.a < 0 && TAB.b < 0;
-}
-
-function setMark(which) {
-  gc('tablatura/marcar-trecho', { throttleMs: 10000 });
-  if (!TAB.parsed) return;
-  const ev = TAB.playing && TAB.on >= 0 ? TAB.on : TAB.cursor;
-  if (ev < 0) return notify('Toque numa nota (ou selecione na grade) para marcar');
-  TAB[which] = ev;
-  if (TAB.a >= 0 && TAB.b >= 0 && TAB.a > TAB.b) [TAB.a, TAB.b] = [TAB.b, TAB.a];
-  renderAB();
-  if (TAB.playing && TAB.a >= 0 && TAB.b >= 0) tabPlay(TAB.a, { countIn: false });
-}
-
-// ----- Editor em grade (6b) -----
-const measure = () => +$('tab-unidade').value; // 4 tempos: 32 fusas, 16 semicolcheias ou 8 colcheias
-// Duração em figuras (em semicolcheias): nome, símbolo e fração da semibreve
-const FIGS = { 0.5: ['fusa', '', '1/32'], 1: ['semicolcheia', '♬', '1/16'], 2: ['colcheia', '♪', '1/8'], 3: ['colcheia pontuada', '♪.', '3/16'], 4: ['semínima', '♩', '1/4'],
-  6: ['semínima pontuada', '♩.', '3/8'], 8: ['mínima', '', '1/2'], 12: ['mínima pontuada', '', '3/4'], 16: ['semibreve', '', '1'], 24: ['semibreve pontuada', '', '3/2'], 32: ['2 semibreves', '', '2'] };
-const fig = steps => FIGS[steps * 16 / measure()];
-const figName = steps => { const f = fig(steps); return f ? `${f[1] ? f[1] + ' ' : ''}${f[0]} (${f[2]})` : `${steps} ${steps === 1 ? 'passo' : 'passos'}`; };
-const figShort = steps => fig(steps)?.[2] ?? String(steps);
-
-function gridFromText() {
-  const n = tabTuning().courses.length;
-  const p = TAB.parsed;
-  TAB.grid = p ? eventsToGrid(p, n) : Array.from({ length: 8 }, () => ({ frets: new Array(n).fill(-1), dur: 2 }));
-  TAB.sel = { col: 0, course: n - 1 };
-}
-
-/** Grava a grade no texto (formato salvo) e re-lê. */
-function gridCommit() {
-  tabStop();
-  setDirty();
-  $('tab-texto').value = gridToText(TAB.grid, tabLabels(tabTuning()), { measure: measure() });
-  tabParse();
-}
-
-function setTabMode(mode) {
-  if (mode !== TAB.mode) gc(`tablatura/modo-${mode}`);
-  tabStop();
-  TAB.mode = mode;
-  $('tab-modo-texto').setAttribute('aria-pressed', String(mode === 'texto'));
-  $('tab-modo-grade').setAttribute('aria-pressed', String(mode === 'grade'));
-  $('tab-edit-texto').hidden = mode !== 'texto';
-  $('tab-edit-grade').hidden = mode !== 'grade';
-  if (mode === 'grade') {
-    if (tabParse() === null && $('tab-texto').value.trim()) { // texto com erro: não sobrescreve
-      setTabMode('texto');
-      return notify('Corrija o texto antes de abrir a grade');
-    }
-    gridFromText();
-  }
-  renderTabView();
-}
-
-function renderGrid() {
-  const g = TAB.grid;
-  if (!g) return;
-  const tn = tabTuning(), n = tn.courses.length, labels = tabLabels(tn);
-  TAB.sel.col = Math.max(0, Math.min(TAB.sel.col, g.length - 1));
-  TAB.sel.course = Math.max(0, Math.min(TAB.sel.course, n - 1));
-  const starts = gridStarts(g), m = measure();
-  // coluna → evento (pelo passo inicial)
-  const evAt = new Map((TAB.parsed?.events || []).map((e, k) => [e.step, k]).reverse());
-  TAB.colEv = starts.map(s => evAt.get(s) ?? -1);
-  const wrap = $('grade');
-  const hadFocus = wrap.contains(document.activeElement);
-  const grid = document.createElement('div');
-  grid.className = 'grid';
-  grid.style.gridTemplateColumns = `auto repeat(${g.length}, minmax(2.4em, auto))`;
-  for (let c = n - 1; c >= 0; c--) {
-    const row = document.createElement('div');
-    row.setAttribute('role', 'row');
-    row.className = 'grid-line';
-    row.append(Object.assign(document.createElement('span'), { className: 'gl', textContent: labels[c], role: 'rowheader' }));
-    g.forEach((col, k) => {
-      const f = col.frets[c];
-      const b = button(f >= 0 ? String(f) : '', 'gc', () => selectCell(k, c), {
-        role: 'gridcell', 'aria-label': `${tn.courses[c].label}, coluna ${k + 1}: ${f >= 0 ? `casa ${f}` : 'vazia'}`,
-      });
-      b.dataset.col = k; b.dataset.course = c;
-      if (k && Math.floor(starts[k] / m) > Math.floor(starts[k - 1] / m)) b.classList.add('bar');
-      if (TAB.colEv[k] >= 0) (TAB.spans[TAB.colEv[k]] ||= []).push(b);
-      row.append(b);
-    });
-    grid.append(row);
-  }
-  const durRow = document.createElement('div');
-  durRow.className = 'grid-line grid-dur';
-  durRow.setAttribute('aria-hidden', 'true');
-  durRow.append(Object.assign(document.createElement('span'), { className: 'gl' }));
-  g.forEach(col => durRow.append(Object.assign(document.createElement('span'), { textContent: figShort(col.dur), title: figName(col.dur) })));
-  grid.append(durRow);
-  wrap.replaceChildren(grid);
-  markSel();
-  if (hadFocus) wrap.querySelector('.gc.sel')?.focus();
-}
-
-/** Aplica a seleção (sem recriar a grade: o duplo clique precisa do mesmo botão). */
-function markSel() {
-  const { col, course } = TAB.sel;
-  for (const b of $('grade').querySelectorAll('.gc')) {
-    const c = +b.dataset.col === col, sel = c && +b.dataset.course === course;
-    b.classList.toggle('selcol', c);
-    b.classList.toggle('sel', sel);
-    b.tabIndex = sel ? 0 : -1;
-    b.setAttribute('aria-selected', String(sel));
-  }
-  const d = TAB.grid[col]?.dur ?? 2;
-  $('grade-dur').replaceChildren(...[...new Set([...DURS, d])].sort((x, y) => x - y).map(v =>
-    Object.assign(document.createElement('option'), { value: v, textContent: figName(v) })));
-  $('grade-dur').value = String(d);
-}
-
-function selectCell(col, course, focus = false) {
-  TAB.sel = { col, course };
-  TAB.digit = null;
-  TAB.cursor = TAB.colEv[col] >= 0 ? TAB.colEv[col] : TAB.cursor;
-  markSel();
-  if (focus) $('grade').querySelector('.gc.sel')?.focus();
-  renderBoard(TAB.grid[col]?.frets);
-}
-
-function gridSetFret(f) {
-  const col = TAB.grid[TAB.sel.col];
-  if (!col) return;
-  col.frets[TAB.sel.course] = f;
-  gridCommit();
-}
-
-/** Dígito digitado: dois seguidos na mesma célula (em 1,2 s) formam 10–24. */
-function gridDigit(d) {
-  const now = Date.now(), k = `${TAB.sel.col}:${TAB.sel.course}`;
-  let f = d;
-  if (TAB.digit && TAB.digit.k === k && now - TAB.digit.t < 1200 && TAB.digit.v * 10 + d <= 24 && TAB.digit.v > 0) f = TAB.digit.v * 10 + d;
-  TAB.digit = { k, v: f, t: now };
-  const keep = TAB.digit;
-  gridSetFret(f);
-  TAB.digit = keep;
-}
-
-function gridAddCol() {
-  const n = tabTuning().courses.length;
-  const dur = TAB.grid[TAB.sel.col]?.dur ?? 2;
-  TAB.grid.splice(TAB.sel.col + 1, 0, { frets: new Array(n).fill(-1), dur });
-  TAB.sel.col++;
-  gridCommit();
-}
-
-function gridDelCol() {
-  if (TAB.grid.length <= 1) { TAB.grid[0].frets.fill(-1); return gridCommit(); }
-  TAB.grid.splice(TAB.sel.col, 1);
-  gridCommit();
-}
-
-/** Insere a posição atual do dicionário na coluna selecionada (gerada para o instrumento da tablatura). */
-function gridInsertChord() {
-  const [i, t] = tabKey();
-  const v = i === state.instrument && t === state.tuning ? state.voicings[state.idx]
-    : getVoicings(state.chord, i, t, { max: 1 })[0];
-  if (!v) return notify(`Sem posição de ${state.chord.symbol} para este instrumento`);
-  TAB.grid[TAB.sel.col].frets = v.frets.slice();
-  gridCommit();
-  notify(`${state.chord.symbol} inserido`);
-}
-
-function gridKeys(e) {
-  const g = TAB.grid, n = tabTuning().courses.length;
-  if (!g || !e.target.closest('.gc')) return;
-  const { col, course } = TAB.sel;
-  const go = (c, s) => { e.preventDefault(); selectCell(Math.max(0, Math.min(g.length - 1, c)), Math.max(0, Math.min(n - 1, s)), true); };
-  if (e.key === 'ArrowLeft') go(col - 1, course);
-  else if (e.key === 'ArrowRight') go(col + 1, course);
-  else if (e.key === 'ArrowUp') go(col, course + 1);   // linha de cima = corda mais aguda
-  else if (e.key === 'ArrowDown') go(col, course - 1);
-  else if (e.key === 'Home') go(0, course);
-  else if (e.key === 'End') go(g.length - 1, course);
-  else if (/^[0-9]$/.test(e.key)) { e.preventDefault(); gridDigit(+e.key); }
-  else if (e.key === 'Delete' || e.key === 'Backspace' || e.key === 'x') { e.preventDefault(); gridSetFret(-1); }
-  else if (e.key === '+' || e.key === 'Insert') { e.preventDefault(); gridAddCol(); }
-  else if (e.key === '-') { e.preventDefault(); gridDelCol(); }
-}
-
-function setupGrid() {
-  $('grade-teclado').replaceChildren(
-    ...Array.from({ length: 13 }, (_, f) => button(String(f), 'btn key', () => gridSetFret(f), { 'aria-label': `Casa ${f}` })),
-    ...[15, 17].map(f => button(String(f), 'btn key', () => gridSetFret(f), { 'aria-label': `Casa ${f}` })),
-    button('⌫', 'btn key', () => gridSetFret(-1), { 'aria-label': 'Apagar a nota' }));
-  $('grade').addEventListener('keydown', gridKeys);
-  $('grade').addEventListener('dblclick', e => {
-    const k = +e.target.closest('.gc')?.dataset.col;
-    if (Number.isInteger(k)) tabPlay(TAB.colEv.slice(k).find(x => x >= 0) ?? null);
-  });
-  $('grade-dur').addEventListener('change', () => { TAB.grid[TAB.sel.col].dur = +$('grade-dur').value; gridCommit(); });
-  $('grade-add').addEventListener('click', gridAddCol);
-  $('grade-del').addEventListener('click', gridDelCol);
-  $('grade-acorde').addEventListener('click', gridInsertChord);
-  $('tab-modo-texto').addEventListener('click', () => setTabMode('texto'));
-  $('tab-modo-grade').addEventListener('click', () => setTabMode('grade'));
-}
-
-function renderTabList() {
-  // Tablatura aberta (talvez não salva): atalho para continuar
-  const cur = $('tab-atual');
-  cur.hidden = !TAB.open;
-  if (TAB.open) {
-    const name = $('tab-nome').value.trim() || 'Sem nome';
-    const b = button('', 'btn open', () => showTabPane('player'), { title: `Continuar em ${name}` });
-    b.append('Continuar: ', Object.assign(document.createElement('strong'), { textContent: name }),
-      ...(TAB.dirty ? [' ', Object.assign(document.createElement('small'), { textContent: '(não salva)' })] : []));
-    cur.replaceChildren(b);
-  }
-  const tabs = store.tabs();
-  $('tab-lista').replaceChildren(...(tabs.length ? tabs.map(t => {
-    const li = document.createElement('li');
-    const open = button('', 'btn open', () => openTab(t), { title: `Abrir ${t.name}` });
-    open.append(`${t.name} `, Object.assign(document.createElement('small'), { textContent: `${INSTRUMENTS[t.instrument]?.name || t.instrument} · ${t.bpm} BPM` }));
-    li.append(open, button('✕', 'btn small', () => {
-      store.removeTab(t.id);
-      if (TAB.editId === t.id) TAB.editId = null;
-      renderTabList();
-    }, { 'aria-label': `Apagar a tablatura ${t.name}` }));
-    return li;
-  }) : [Object.assign(document.createElement('li'), { className: 'empty-item', textContent: 'Nenhuma tablatura salva.' })]));
-}
-
-// ----- Biblioteca / Player / Editar (7d) -----
-const tabPane = () => document.querySelector('.tabmod').dataset.tabview;
-function showTabPane(pane) {
-  const sec = document.querySelector('.tabmod');
-  if (pane !== 'biblioteca' && !TAB.open) pane = 'biblioteca';
-  if (pane === 'biblioteca') tabStop();
-  if (sec.dataset.tabview !== pane && document.body.dataset.view === 'tablatura') trackView(`/tablatura${pane === 'biblioteca' ? '' : '/' + pane}`, `Tablatura — ${pane}`);
-  sec.dataset.tabview = pane;
-  $('tab-ver').setAttribute('aria-pressed', String(pane === 'player'));
-  $('tab-editar').setAttribute('aria-pressed', String(pane === 'editar'));
-  document.body.classList.toggle('tab-docked', pane !== 'biblioteca');
-  if (pane === 'biblioteca') renderTabList();
-  else if (pane === 'editar' && TAB.mode === 'grade') renderGrid();
-  if (mobile() && document.body.dataset.view === 'tablatura') window.scrollTo({ top: 0 });
-  dockResize();
-}
-function renderTabTitle() {
-  $('tab-titulo').textContent = ($('tab-nome').value.trim() || 'Sem nome') + (TAB.dirty ? ' •' : '');
-  $('tab-titulo').title = TAB.dirty ? 'Alterações não salvas' : '';
-}
-function setDirty(d = true) { TAB.dirty = d; renderTabTitle(); }
-/** Altura do braço + transporte fixos (celular): reserva espaço e margem de rolagem. */
-function dockResize() {
-  document.body.style.setProperty('--dock-h', `${$('tab-dock').offsetHeight}px`);
-}
-if ('ResizeObserver' in window) new ResizeObserver(dockResize).observe($('tab-dock'));
-
-/** Músicas para estudar (js/songs.js), agrupadas por instrumento; abre o grupo do instrumento atual. */
-function renderSongs() {
-  $('tab-musicas').replaceChildren(...Object.values(INSTRUMENTS).map(i => {
-    const det = Object.assign(document.createElement('details'), { className: 'song-group', open: i.id === state.instrument });
-    const songs = SONG_TABS.filter(s => s.instrument === i.id);
-    det.append(Object.assign(document.createElement('summary'), { textContent: `${i.name} (${songs.length})` }));
-    const ul = Object.assign(document.createElement('ul'), { className: 'item-list song-list' });
-    ul.append(...songs.map(s => {
-      const li = document.createElement('li');
-      const multi = Object.keys(i.tunings).length > 1;
-      const b = button('', 'btn open', () => {
-        gc(`tablatura/musica/${s.instrument}/${gcSlug(s.name)}`, { title: `Música: ${s.name} (${i.name})` });
-        loadTab({ name: s.name, instrument: s.instrument, tuning: s.tuning, text: s.text, bpm: s.bpm, unit: s.unit });
-        showTabPane('player');
-      }, { title: `Abrir ${s.name}` });
-      b.append(`▶ ${s.name} `, Object.assign(document.createElement('small'), {
-        textContent: `${s.author} · ${s.key}${s.original ? ' (tom original)' : ''}${multi ? ` · ${i.tunings[s.tuning].short || i.tunings[s.tuning].name}` : ''}`,
-      }));
-      li.append(b);
-      return li;
-    }));
-    det.append(ul);
-    return det;
-  }));
-}
-
-/** Carrega uma tablatura no editor (salva, exemplo ou importada). */
-function loadTab(t, { keepXML = false } = {}) {
-  tabStop();
-  TAB.open = true;
-  if (!keepXML) { TAB.xml = null; $('tab-parte-box').hidden = true; }
-  TAB.editId = t.id ?? null;
-  TAB.a = TAB.b = TAB.cursor = -1;
-  $('tab-nome').value = t.name;
-  fillTabInstruments(`${t.instrument}/${t.tuning}`);
-  $('tab-texto').value = t.text;
-  if (t.bpm) $('tab-bpm').value = t.bpm;
-  if (t.unit) $('tab-unidade').value = String(t.unit);
-  tabParse();
-  if (TAB.mode === 'grade') { gridFromText(); renderTabView(); }
-  setDirty(false);
-}
-
-// ----- Importar MusicXML (6c) -----
-async function importXML(file) {
-  try {
-    const buf = await file.arrayBuffer();
-    const head = new Uint8Array(buf, 0, Math.min(2, buf.byteLength));
-    const zip = head[0] === 0x50 && head[1] === 0x4b; // "PK": .mxl compactado
-    const r = parseMusicXML(zip ? await unzipMXL(buf) : new TextDecoder().decode(buf));
-    if (r.error) { $('tab-msg').textContent = r.error; gc('tablatura/importar-musicxml-erro'); return; }
-    gc(`tablatura/importar-musicxml${zip ? '-mxl' : ''}`);
-    const parts = r.parts.map((p, k) => ({ p, k })).filter(x => x.p.notes.length);
-    TAB.xml = { ...r, file: file.name.replace(/\.[^.]+$/, '') };
-    $('tab-parte').replaceChildren(...parts.map(({ p, k }) => Object.assign(document.createElement('option'), {
-      value: k, textContent: `${p.name}${hasTab(p) ? ' (tablatura)' : ' (partitura)'}`,
-    })));
-    $('tab-parte').value = String((parts.find(x => hasTab(x.p)) || parts[0]).k);
-    $('tab-parte-box').hidden = parts.length < 2;
-    loadXMLPart(+$('tab-parte').value);
-    showTabPane('player');
-  } catch (e) {
-    $('tab-msg').textContent = `Não foi possível importar: ${e.message}`;
-    gc('tablatura/importar-musicxml-erro');
-  }
-}
-
-function loadXMLPart(k, keepInstrument = false) {
-  const x = TAB.xml, part = x.parts[k];
-  const [ci, ct] = tabKey();
-  const m = (!keepInstrument && matchInstrument(part, INSTRUMENTS)) || { instrument: ci, tuning: ct };
-  const tn = INSTRUMENTS[m.instrument].tunings[m.tuning];
-  const g = partToGrid(part, tn.courses.map(c => Math.min(...c.notes.map(noteToMidi))));
-  const name = [x.title || x.file, x.parts.length > 1 ? part.name : ''].filter(Boolean).join(' — ');
-  TAB.editId = null;
-  loadTab({ name, instrument: m.instrument, tuning: m.tuning, unit: g.unit, text: gridToText(g.cols, tabLabels(tn), { measure: g.measure }),
-    bpm: x.bpm ? Math.min(240, Math.max(40, x.bpm)) : 0 }, { keepXML: true });
-  const notes = part.notes.length - g.dropped;
-  $('tab-msg').textContent = [`Importado: ${notes} nota(s)${g.fromTab ? '' : ' — casas calculadas pela altura (a parte não tem corda/casa)'}`,
-    g.dropped ? `${g.dropped} nota(s) fora do alcance do instrumento` : '', $('tab-msg').textContent].filter(Boolean).join(' · ');
-  notify('MusicXML importado');
-}
-
-function openTab(t) {
-  loadTab(t);
-  showTabPane('player');
-}
-
-$('tab-play').addEventListener('click', () => (TAB.playing ? tabStop() : tabPlay(TAB.mode === 'grade' && TAB.cursor >= 0 ? TAB.cursor : null)));
-$('tab-view').addEventListener('click', e => {
-  const sp = e.target.closest('.tn');
-  if (!sp) return;
-  TAB.cursor = +sp.dataset.ev;
-  tabPlay(TAB.cursor);
-});
-$('tab-texto').addEventListener('input', () => { tabStop(); tabParse(); setDirty(); });
-$('tab-nome').addEventListener('input', () => setDirty());
-$('tab-bpm').addEventListener('input', () => setDirty());
-$('tab-ver').addEventListener('click', () => showTabPane('player'));
-$('tab-editar').addEventListener('click', () => showTabPane('editar'));
-$('tab-voltar').addEventListener('click', () => showTabPane('biblioteca'));
-$('tab-nova').addEventListener('click', () => {
-  gc('tablatura/nova');
-  loadTab({ name: '', instrument: state.instrument, tuning: state.tuning, text: '', bpm: 90, unit: 16 });
-  setTabMode('texto');
-  showTabPane('editar');
-  $('tab-texto').focus();
-});
-$('tab-acordes').addEventListener('input', () => { tabStop(); tabParse(); });
-$('tab-instrumento').addEventListener('input', () => {
-  tabStop();
-  setDirty();
-  // Partitura importada sem corda/casa: recalcula as posições para o novo instrumento
-  if (TAB.xml && !hasTab(TAB.xml.parts[+$('tab-parte').value])) { loadXMLPart(+$('tab-parte').value, true); return setDirty(); }
-  if (tabParse() && TAB.mode === 'grade') { gridFromText(); renderTabView(); }
-  else if (TAB.mode === 'grade') setTabMode('texto');
-});
-for (const id of ['tab-bpm', 'tab-unidade']) $(id).addEventListener('change', () => {
-  if (id === 'tab-unidade' && TAB.mode === 'grade') renderGrid();
-  if (TAB.playing) tabPlay(Math.max(0, TAB.on), { countIn: false });
-});
-$('tab-vel').addEventListener('input', () => { $('tab-vel-out').textContent = `${$('tab-vel').value}%`; });
-$('tab-vel').addEventListener('change', () => { if (TAB.playing) tabPlay(Math.max(0, TAB.on), { countIn: false }); });
-$('tab-a').addEventListener('click', () => setMark('a'));
-$('tab-b').addEventListener('click', () => setMark('b'));
-$('tab-ab-limpar').addEventListener('click', () => { TAB.a = TAB.b = -1; renderAB(); });
-$('tab-exemplo').addEventListener('click', () => {
-  gc('tablatura/exemplo');
-  loadTab({ name: 'Exemplo (C · G/B · Am · F)', instrument: 'violao', tuning: 'padrao', text: TAB_EXAMPLE });
-  showTabPane('player');
-});
-$('tab-importar').addEventListener('click', () => $('tab-arquivo').click());
-$('tab-arquivo').addEventListener('change', () => {
-  const f = $('tab-arquivo').files[0];
-  $('tab-arquivo').value = '';
-  if (f) importXML(f);
-});
-$('tab-parte').addEventListener('change', () => loadXMLPart(+$('tab-parte').value));
-$('tab-salvar').addEventListener('click', () => {
-  if (!tabParse()) { $('tab-msg').textContent ||= 'Digite uma tablatura antes de salvar.'; return; }
-  const [i, t] = tabKey();
-  const saved = store.saveTab({
-    id: TAB.editId, name: $('tab-nome').value.trim() || 'Sem nome', text: $('tab-texto').value,
-    instrument: i, tuning: t, bpm: +$('tab-bpm').value, unit: +$('tab-unidade').value,
-  });
-  TAB.editId = saved?.id ?? null;
-  renderTabList();
-  if (!saved) return notify('Não foi possível salvar');
-  gc('tablatura/salvar');
-  setDirty(false);
-  if (!store.prefs().saveWarn || !$('tab-salva').showModal) return notify('Tablatura salva neste aparelho');
-  $('tab-salva-nao-avisar').checked = false;
-  $('tab-salva').showModal();
-});
-// Aviso ao salvar: os dados ficam só no navegador deste aparelho → oferecer exportar
-const slug = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w-]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'tablatura';
-$('tab-salva-exportar').addEventListener('click', () => {
-  const tab = store.tabs().find(t => t.id === TAB.editId);
-  if (tab) gc('tablatura/exportar');
-  if (tab) downloadJSON(store.exportTabJSON(tab.id), `tablatura-${slug(tab.name)}-${today()}.json`);
-});
-$('tab-salva-backup').addEventListener('click', () => { gc('backup/exportar-ao-salvar-tab'); exportBackup(); });
-$('tab-salva').addEventListener('close', () => {
-  if ($('tab-salva-nao-avisar').checked) store.setPref('saveWarn', false);
-});
-fillTabInstruments();
-setupGrid();
-renderTabList();
-renderSongs();
-renderAB();
-renderBoard(null);
-
 // ---------- Início ----------
 $('anterior').addEventListener('click', () => move(-1));
 $('tocar-dedilhar').addEventListener('click', () => playCurrent('dedilhar'));
@@ -1540,7 +1001,7 @@ document.addEventListener('visibilitychange', () => {
 $('proxima').addEventListener('click', () => move(1));
 document.addEventListener('keydown', e => {
   if (stageOpen()) return stageKeys(e);
-  if (e.target.closest('input, textarea, select, [role="tab"], .grid-wrap, dialog')) return;
+  if (e.target.closest('input, textarea, select, [role="tab"], dialog')) return;
   if (e.key === 'ArrowLeft') move(-1);
   if (e.key === 'ArrowRight') move(1);
 });

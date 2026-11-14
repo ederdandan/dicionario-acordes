@@ -7,6 +7,7 @@
   <meta name="theme-color" content="#b5532a">
   <title>Dicionário de Acordes</title>
   <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/svg+xml" href="./icons/logo.svg">
   <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -24,7 +25,11 @@
 </head>
 <body data-view="acordes">
   <header class="topbar">
-    <h1 class="brand">Dicionário de Acordes</h1>
+    <h1 class="brand"><svg class="brand-logo" width="28" height="28" viewBox="0 0 64 64" fill="#b5532a" aria-hidden="true" focusable="false">
+        <rect x="13" y="13" width="38" height="4" rx="1"/>
+        <path d="M14 17V54M21.2 17V54M28.4 17V54M35.6 17V54M42.8 17V54M50 17V54M14 27H50M14 37H50M14 47H50" fill="none" stroke="currentColor" stroke-width="2.6"/>
+        <circle cx="21.2" cy="42" r="4.6"/><circle cx="28.4" cy="32" r="4.6"/><circle cx="42.8" cy="22" r="4.6"/>
+      </svg>Dicionário de Acordes</h1>
     <button id="ajustes-abrir" type="button" class="btn gear" aria-haspopup="dialog" aria-controls="ajustes"><span aria-hidden="true">⚙</span> Ajustes</button>
     <div class="search" role="search">
       <label for="busca" class="sr-only">Buscar acorde</label>
@@ -39,7 +44,6 @@
   <nav class="bottom-nav sections" aria-label="Seções">
     <button type="button" data-go="acordes" aria-current="page"><span aria-hidden="true">♪</span>Acordes</button>
     <button type="button" data-go="repertorio"><span aria-hidden="true">★</span>Repertório</button>
-    <button type="button" data-go="tablatura"><span aria-hidden="true">≡</span>Tablatura</button>
     <button type="button" data-go="identificar"><span aria-hidden="true">?</span>Identificar</button>
   </nav>
 
@@ -69,6 +73,13 @@
           <button id="ensaio-anterior" type="button" class="btn">◀ Anterior</button>
           <button id="ensaio-tocar" type="button" class="btn play-btn">▶ Tocar</button>
           <button id="ensaio-proximo" type="button" class="btn">Próximo ▶</button>
+        </div>
+        <p id="ensaio-notas" class="rehearsal-notes" aria-live="polite"></p>
+        <div class="rehearsal-auto">
+          <button id="ensaio-auto" type="button" class="btn play-btn" aria-pressed="false">▶ Tocar progressão</button>
+          <label>Andamento <select id="ensaio-bpm"><option value="60">60</option><option value="80" selected>80</option><option value="100">100</option><option value="120">120</option></select> BPM</label>
+          <label>Tempos por acorde <select id="ensaio-tempos"><option value="2">2</option><option value="4" selected>4</option></select></label>
+          <label><input id="ensaio-repetir" type="checkbox" checked> Repetir</label>
         </div>
       </div>
       <div class="chord-bar" role="group" aria-label="Escolher acorde">
@@ -138,7 +149,7 @@
         <div class="study-head">
           <label for="estudo-tom">Tom</label>
           <select id="estudo-tom"></select>
-          <p class="hint">Toque para ensaiar. “Copiar” leva a progressão para o formulário, para você criar a sua a partir dela.</p>
+          <p class="hint">Toque para ensaiar (e use “▶ Tocar progressão” para ouvir sozinha). Toque numa música para ir ao tom original dela. “Copiar” leva a progressão para o formulário, para você criar a sua a partir dela.</p>
         </div>
         <div id="estudo-lista"></div>
       </div>
@@ -167,112 +178,6 @@
       </div>
       </div>
     </section>
-    <section class="panel tabmod" data-view="tablatura" data-tabview="biblioteca" aria-label="Tablatura">
-      <!-- Biblioteca -->
-      <div id="tab-biblioteca" class="tab-pane-lib">
-        <h2 class="panel-title">Tablaturas</h2>
-        <p id="tab-atual" class="tab-current" hidden></p>
-        <div class="tab-actions">
-          <button id="tab-nova" type="button" class="btn play-btn">＋ Nova</button>
-          <button id="tab-importar" type="button" class="btn" title="Arquivo .musicxml, .xml ou .mxl (Guitar Pro, MuseScore, TuxGuitar…)">Importar MusicXML</button>
-          <button id="tab-exemplo" type="button" class="btn">Exemplo</button>
-          <input id="tab-arquivo" type="file" accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml" hidden>
-        </div>
-        <h3 class="panel-title tab-saved-title">Salvas neste aparelho</h3>
-        <ul id="tab-lista" class="item-list"></ul>
-        <h3 class="panel-title tab-saved-title">Músicas para estudar</h3>
-        <p class="hint">Melodias conhecidas em domínio público, nos tons originais. Abra, toque junto e salve uma cópia se quiser editar.</p>
-        <div id="tab-musicas" class="song-groups"></div>
-      </div>
-
-      <!-- Tablatura aberta: Player ou Editar -->
-      <div id="tab-doc" class="tab-doc">
-        <div class="tab-doc-head">
-          <button id="tab-voltar" type="button" class="btn small" aria-label="Voltar à lista de tablaturas">← Tablaturas</button>
-          <h2 id="tab-titulo" class="tab-title"></h2>
-          <div class="tab-switch" role="group" aria-label="Modo da tablatura">
-            <button id="tab-ver" type="button" class="btn small" aria-pressed="true">▶ Tocar</button>
-            <button id="tab-editar" type="button" class="btn small" aria-pressed="false">✎ Editar</button>
-          </div>
-          <button id="tab-salvar" type="button" class="btn small">Salvar</button>
-        </div>
-
-        <div id="tab-editor" class="tab-editor">
-          <div class="tab-fields">
-            <label>Nome <input id="tab-nome" type="text" autocomplete="off" placeholder="Minha tablatura"></label>
-            <label>Instrumento <select id="tab-instrumento"></select></label>
-            <label id="tab-parte-box" hidden>Parte do MusicXML <select id="tab-parte"></select></label>
-          </div>
-          <div class="tab-mode" role="group" aria-label="Editar como">
-            <button id="tab-modo-texto" type="button" class="btn small" aria-pressed="true">Texto</button>
-            <button id="tab-modo-grade" type="button" class="btn small" aria-pressed="false">Grade</button>
-          </div>
-          <div id="tab-edit-texto">
-            <label for="tab-texto" class="hint">Cole ou digite a tablatura (linha de cima = corda mais aguda; um bloco por sistema).</label>
-            <textarea id="tab-texto" class="tab-text" rows="10" spellcheck="false" autocomplete="off" placeholder="Cole aqui a tablatura (ou toque em Exemplo)"></textarea>
-        <details class="tab-legenda">
-          <summary>Símbolos que o player entende</summary>
-          <dl>
-            <dt><code>5h7</code></dt><dd>hammer-on: o 7 soa sem tocar a corda de novo</dd>
-            <dt><code>7p5</code></dt><dd>pull-off</dd>
-            <dt><code>5t12</code></dt><dd>tapping (como hammer-on)</dd>
-            <dt><code>5/7</code> <code>7</code> <code>5s7</code></dt><dd>slide subindo / descendo; <code>/7</code> sozinho = slide de entrada</dd>
-            <dt><code>7b9</code> <code>7^9</code></dt><dd>bend até a altura da casa 9; <code>7b</code> sem alvo = 1 tom</dd>
-            <dt><code>7b9r7</code></dt><dd>bend e release (volta)</dd>
-            <dt><code>7~~~</code></dt><dd>vibrato</dd>
-            <dt><code>(5)</code></dt><dd>nota fantasma (mais fraca)</dd>
-            <dt><code>&lt;12&gt;</code></dt><dd>harmônico natural (12, 7, 5, 4…)</dd>
-            <dt><code>x</code></dt><dd>nota abafada (som percussivo)</dd>
-            <dt><code>PM-----</code></dt><dd>palm mute numa linha acima ou abaixo do bloco, alinhada às colunas</dd>
-            <dt><code>let ring--</code></dt><dd>deixa soar (anula o PM no trecho)</dd>
-            <dt><code>|</code></dt><dd>barra de compasso (não conta tempo); outros símbolos só ocupam tempo</dd>
-          </dl>
-        </details>
-          </div>
-          <div id="tab-edit-grade" class="grid-editor" hidden>
-            <p class="hint">Toque numa célula e digite a casa (teclado ou números abaixo). Setas movem; Delete apaga. As anotações do texto somem na 1ª edição pela grade.</p>
-            <div id="grade" class="grid-wrap" role="grid" aria-label="Grade da tablatura (cordas × colunas)"></div>
-            <div class="grid-tools">
-              <div id="grade-teclado" class="keypad" role="group" aria-label="Casa"></div>
-              <div class="grid-row">
-                <label>Duração da nota <select id="grade-dur"></select></label>
-                <button id="grade-add" type="button" class="btn small">+ Coluna</button>
-                <button id="grade-del" type="button" class="btn small">− Coluna</button>
-                <button id="grade-acorde" type="button" class="btn small">Inserir acorde</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <p id="tab-msg" class="form-msg" aria-live="polite"></p>
-        <div id="tab-view" class="tab-view" aria-label="Tablatura (toque num número para tocar dali)"></div>
-        <details class="tab-avancado">
-          <summary>Ajustes avançados</summary>
-          <div class="tab-controls">
-            <label>Cada traço vale <select id="tab-unidade"><option value="16">1/16 (semicolcheia)</option><option value="8">1/8 (colcheia)</option><option value="32">1/32 (fusa)</option></select></label>
-            <label class="check" title="Toca o acorde de anotações como (A) ou E7 no instrumento escolhido"><input id="tab-acordes" type="checkbox" checked> Tocar acordes das anotações</label>
-            <label class="check"><input id="tab-contagem" type="checkbox"> Contagem de entrada (4 cliques)</label>
-          </div>
-        </details>
-
-        <!-- Braço + transporte: fixos embaixo no celular -->
-        <div id="tab-dock" class="tab-dock">
-          <div id="tab-braco" class="tab-braco"></div>
-          <div class="transport" role="group" aria-label="Reprodução">
-            <button id="tab-play" type="button" class="btn play-btn">▶ Tocar</button>
-            <label class="tp-bpm">BPM <input id="tab-bpm" type="number" min="40" max="240" step="1" value="90" inputmode="numeric"></label>
-            <label class="tp-vel"><span>Velocidade <output id="tab-vel-out" for="tab-vel">100%</output></span><input id="tab-vel" type="range" min="50" max="100" step="5" value="100"></label>
-            <div class="ab" role="group" aria-label="Repetir um trecho">
-              <button id="tab-a" type="button" class="btn small" title="Marca o início do trecho na nota selecionada ou tocando">Marcar início</button>
-              <button id="tab-b" type="button" class="btn small" title="Marca o fim do trecho na nota selecionada ou tocando">Marcar fim</button>
-              <button id="tab-ab-limpar" type="button" class="btn small" aria-label="Limpar o trecho marcado">Limpar</button>
-              <label class="check"><input id="tab-repetir" type="checkbox"> Repetir</label>
-            </div>
-            <p id="tab-ab" class="ab-status" aria-live="polite"></p>
-          </div>
-        </div>
-      </div>
-    </section>
   </main>
 
 
@@ -283,6 +188,7 @@
       <button id="palco-fechar" type="button" class="btn" aria-label="Sair do modo palco">✕</button>
     </div>
     <h2 id="palco-simbolo" class="stage-symbol"></h2>
+    <p id="palco-notas" class="stage-next"></p>
     <div id="palco-diagrama" class="stage-diagram swipe"></div>
     <p id="palco-seguinte" class="stage-next"></p>
     <div class="stage-nav">
@@ -334,7 +240,7 @@
     <p class="hint">Só contagens de telas e ações (ex.: “tocou um acorde”), sem cookies nem dados pessoais — ajudam a melhorar o app.</p>
     <button id="instalar" type="button" class="btn opt" hidden>⤓ Instalar o app</button>
     <h3 class="opt-title">Backup</h3>
-    <p class="hint">Favoritos, progressões e tablaturas ficam só neste navegador. Exporte um arquivo para guardar uma cópia ou levar para outro aparelho.</p>
+    <p class="hint">Favoritos e progressões ficam só neste navegador. Exporte um arquivo para guardar uma cópia ou levar para outro aparelho.</p>
     <div class="backup">
       <button id="exportar" type="button" class="btn">Exportar backup</button>
       <button id="importar" type="button" class="btn">Importar backup</button>
@@ -343,7 +249,7 @@
     <p id="backup-msg" class="form-msg" aria-live="polite"></p>
     <div class="danger-zone">
       <h3 class="opt-title">Área de perigo</h3>
-      <p class="hint">Apaga favoritos, progressões, tablaturas e preferências deste aparelho. Não dá para desfazer.</p>
+      <p class="hint">Apaga favoritos, progressões e preferências deste aparelho. Não dá para desfazer.</p>
       <button id="apagar-tudo" type="button" class="btn danger-btn">Apagar tudo</button>
     </div>
   </dialog>
@@ -356,19 +262,6 @@
       <li>Confirme em <strong>Adicionar</strong>. O app abre em tela cheia e funciona offline.</li>
     </ol>
     <form method="dialog"><button class="btn">Entendi</button></form>
-  </dialog>
-
-  <dialog id="tab-salva" class="ios-dialog" aria-labelledby="tab-salva-titulo" aria-describedby="tab-salva-texto">
-    <h2 id="tab-salva-titulo">Tablatura salva — só neste aparelho</h2>
-    <p id="tab-salva-texto">Ela fica guardada apenas neste navegador; não vai para nenhuma nuvem nem conta.
-      Se você <strong>limpar os dados do navegador</strong>, desinstalar o app ou trocar de aparelho, <strong>ela se perde</strong>.
-      Exporte um arquivo para guardar uma cópia — depois é só usar <em>⚙ Ajustes → Importar backup</em>.</p>
-    <form method="dialog" class="dialog-actions">
-      <button id="tab-salva-exportar" class="btn" value="tab">Exportar esta tablatura</button>
-      <button id="tab-salva-backup" class="btn" value="all">Exportar backup completo</button>
-      <button class="btn" value="">Agora não</button>
-      <label class="check"><input id="tab-salva-nao-avisar" type="checkbox"> Não avisar de novo</label>
-    </form>
   </dialog>
 
   <script type="module" src="./js/app.js"></script>

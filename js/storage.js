@@ -3,9 +3,9 @@
 
 const KEY = 'dicionario-acordes:v1';
 const FORMAT = 'dicionario-acordes-backup';
-const DEFAULT_PREFS = { theme: 'auto', leftHanded: false, saveWarn: true, seen: {}, studyKey: 'C', stats: true };
+const DEFAULT_PREFS = { theme: 'auto', leftHanded: false, seen: {}, studyKey: 'C', stats: true };
 
-const empty = () => ({ favorites: [], progressions: [], tabs: [], prefs: { ...DEFAULT_PREFS, seen: {} } });
+const empty = () => ({ favorites: [], progressions: [], prefs: { ...DEFAULT_PREFS, seen: {} } });
 
 function getBackend(backend) {
   if (backend) return backend;
@@ -31,20 +31,10 @@ function sanitize(raw) {
     if (!chords.length) continue;
     out.progressions.push({ id: str(p.id, 60) || newId(), name: str(p.name, 80) || 'Sem nome', chords, created: Number(p.created) || 0 });
   }
-  for (const t of Array.isArray(raw.tabs) ? raw.tabs : []) {
-    const text = str(t?.text, 20000);
-    if (!text.trim()) continue;
-    out.tabs.push({
-      id: str(t.id, 60) || newId(), name: str(t.name, 80) || 'Sem nome', text,
-      instrument: str(t.instrument, 30) || 'violao', tuning: str(t.tuning, 30) || 'padrao',
-      bpm: Math.min(240, Math.max(40, Math.round(Number(t.bpm)) || 90)), unit: [8, 32].includes(t.unit) ? t.unit : 16, created: Number(t.created) || 0,
-    });
-  }
   if (raw.prefs && typeof raw.prefs === 'object') {
     if (['auto', 'light', 'dark'].includes(raw.prefs.theme)) out.prefs.theme = raw.prefs.theme;
     out.prefs.leftHanded = raw.prefs.leftHanded === true;
     out.prefs.stats = raw.prefs.stats !== false; // métricas de uso anônimas (GoatCounter)
-    out.prefs.saveWarn = raw.prefs.saveWarn !== false; // aviso "fica só neste aparelho" ao salvar tablatura
     if (typeof raw.prefs.studyKey === 'string' && /^[A-G][#b]?$/.test(raw.prefs.studyKey)) out.prefs.studyKey = raw.prefs.studyKey; // tom das progressões de estudo
     // dicas de 1ª visita já vistas (tour, "deslize para trocar"…): { chave: true }
     const seen = raw.prefs.seen && typeof raw.prefs.seen === 'object' ? raw.prefs.seen : {};
@@ -95,28 +85,12 @@ export function createStorage({ key = KEY, backend } = {}) {
       return prog;
     },
     removeProgression(id) { data.progressions = data.progressions.filter(p => p.id !== id); return persist(); },
-    // Tablaturas
-    tabs: () => data.tabs.slice(),
-    saveTab(t) {
-      const tab = sanitize({ tabs: [{ ...t, id: t.id || newId(), created: t.created || Date.now() }] }).tabs[0];
-      if (!tab) return null;
-      const i = data.tabs.findIndex(x => x.id === tab.id);
-      if (i >= 0) data.tabs[i] = tab; else data.tabs.push(tab);
-      persist();
-      return tab;
-    },
-    removeTab(id) { data.tabs = data.tabs.filter(t => t.id !== id); return persist(); },
     // Preferências
     prefs: () => ({ ...data.prefs, seen: { ...data.prefs.seen } }),
     setPref(k, v) { data.prefs = sanitize({ prefs: { ...data.prefs, [k]: v } }).prefs; return persist(); },
     // Backup
     exportJSON() {
       return JSON.stringify({ format: FORMAT, version: 1, exported: new Date().toISOString(), ...data }, null, 2);
-    },
-    /** Backup com uma só tablatura (sem preferências): importável pelo mesmo "Importar JSON". */
-    exportTabJSON(id) {
-      const tab = data.tabs.find(t => t.id === id);
-      return tab ? JSON.stringify({ format: FORMAT, version: 1, exported: new Date().toISOString(), tabs: [tab] }, null, 2) : null;
     },
     /** Mescla um backup (itens com o mesmo id são substituídos). Lança erro se o arquivo for inválido. */
     importJSON(text) {
@@ -127,10 +101,9 @@ export function createStorage({ key = KEY, backend } = {}) {
       const merge = (cur, add) => [...cur.filter(c => !add.some(a => a.id === c.id)), ...add];
       data.favorites = merge(data.favorites, inc.favorites);
       data.progressions = merge(data.progressions, inc.progressions);
-      data.tabs = merge(data.tabs, inc.tabs);
       if (raw.prefs) data.prefs = inc.prefs;
       persist();
-      return { favorites: inc.favorites.length, progressions: inc.progressions.length, tabs: inc.tabs.length };
+      return { favorites: inc.favorites.length, progressions: inc.progressions.length };
     },
     clear() { data = empty(); try { be?.removeItem(key); } catch { /* ignora */ } },
   };
