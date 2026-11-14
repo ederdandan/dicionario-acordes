@@ -688,7 +688,7 @@ function tabParse() {
   const [i, t] = tabKey();
   const text = $('tab-texto').value;
   const r = text.trim() ? parseTab(text, INSTRUMENTS[i].tunings[t].courses.length) : { error: '' };
-  $('tab-msg').textContent = r.error || '';
+  $('tab-msg').textContent = r.error || (r.ignored?.length ? `Anotações ignoradas: ${r.ignored.join(', ')}` : '');
   TAB.parsed = r.error === undefined ? r : null;
   renderTabView();
   return TAB.parsed;
