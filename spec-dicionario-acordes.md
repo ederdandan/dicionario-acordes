@@ -22,6 +22,7 @@
 | 6a | Tablatura em texto: play com BPM, destaque sincronizado, salvar | 🟡 implementada (2026-11-14) — validação manual pendente | Agendador com lookahead no relógio do AudioContext; destaque compensa latência; passo = 1/8 ou 1/16; tabs no backup. Anotações no meio da linha ((E), PM, `[1]` no fim) são ignoradas sem desalinhar; as que são cifra (`A`, `E7`, `G/B`) viram evento de acorde destacado e, com “Tocar acordes das anotações” (ligado por padrão), soam na 1ª posição do instrumento/afinação escolhidos (batida rápida, volume 0,6). |
 | 6b | Editor de tablatura em grade, braço sincronizado, modo estudo | 🟡 implementada (2026-11-14) — validação manual pendente | 115/115 testes + 14 verificações E2E (Chrome headless). O **texto continua sendo o formato salvo**: a grade (`eventsToGrid`/`gridToText`/`gridStarts`/`tabLabels` em `tab.js`, puras) lê o texto e, a cada edição, regrava o texto com barra a cada compasso de 4 tempos (16 passos em 1/16, 8 em 1/8) e 2 compassos por sistema; anotações do texto somem na 1ª edição pela grade. Coluna = instante; duração em passos (1–16); número de 2 dígitos ocupa 2 passos se a duração for 1. Entrada: teclado físico (dois dígitos em 1,2 s → 10–24; setas, Delete, `+`/`-`) ou teclado na tela (0–12, 15, 17, ⌫). “Inserir acorde” usa a posição atual do dicionário (ou a 1ª gerada, se o instrumento da tablatura for outro). Braço horizontal (`renderFretboard` em `diagram.js`) mostra as casas do evento que soa/selecionado. Estudo: velocidade 50–100% (multiplica o passo), A–B por evento (marca no ponto selecionado/tocando, sempre em laço, emendado no tempo), contagem de entrada de 4 cliques (`scheduleClick` em `audio.js`). Duplo clique na grade toca dali. |
 | 6c | Importar MusicXML | 🟡 implementada (2026-11-14) — validação manual pendente | 123/123 testes + 7 verificações E2E. Novo módulo `js/musicxml.js`: `parseMusicXML(texto)` (DOMParser; `score-partwise`; `<chord/>`, pausas, `<backup>`/`<forward>` de várias vozes, ligaduras sem novo ataque, ornamentos ignorados, andamento de `<sound tempo>`, afinação de `<staff-tuning>`), `matchInstrument` (afinação exata → mesmas classes de nota → nº de cordas), `partToGrid` (pura → colunas da grade da 6b; passo de 1/16, ou 1/8 se nada cair em semicolcheia; barras pela fórmula de compasso) e `unzipMXL` (.mxl: ZIP lido à mão + `DecompressionStream('deflate-raw')`). O resultado vira texto da 6a (o que se salva). **Desvio:** parte sem `<technical>` (partitura comum) também é importada, com a casa mais baixa possível por altura no instrumento escolhido (recalcula ao trocar o instrumento); notas fora do alcance são contadas e avisadas. Com várias partes, aparece o seletor “Parte do MusicXML” (prefere a 1ª com tablatura). Quiálteras são arredondadas para a semicolcheia; `score-timewise` é recusado com mensagem. |
+| 7 | Melhorias de UX (7a cabeçalho/ajustes · 7b seletor acima do diagrama · 7c correções rápidas · 7d tablatura em Biblioteca/Player/Editar · 7e abas no desktop) | ⬜ pendente | Backlog da análise de UX de 2026-11-14; detalhes e aceite na seção da Fase 7. Ordem sugerida: 7a+7c juntos, depois 7b, 7d, 7e. |
 
 ---
 
@@ -242,3 +243,44 @@ Grade de toque (cordas × colunas, teclado numérico de casas, duração por col
 ### 6c — Importar MusicXML
 Ler partes com `<technical><string>/<fret>` e durações, convertendo para o modelo da 6a/6b.
 
+---
+
+## Fase 7 — Melhorias de UX (backlog da análise de 2026-11-14)
+Origem: análise de usabilidade feita com capturas reais (celular 390 px nas 4 abas e desktop 1366 px). Ensaio e modo Palco **não** foram avaliados (ficaram de fora das capturas). Diagnóstico geral: cada recurso virou mais um bloco numa página que só cresce; no celular isso obriga a rolar muito para tarefas básicas, e no desktop vira uma página única muito longa.
+**Arquivos:** `index.html`, `css/app.css`, `js/app.js`, `js/diagram.js` (só 7c), `sw.js` (incrementar `CACHE_NAME`), `tests.html` (só se mudar função pura). Manter os contratos da seção 3 e o desktop funcional. Fazer na ordem 7a → 7e (uma subfase por commit).
+
+### 7a — Cabeçalho enxuto + Ajustes (esforço baixo)
+- Hoje o cabeçalho ocupa ~165 px (20% da tela do celular) em todas as abas: título + Instalar + "Tema: automático" + Canhoto + busca.
+- Cabeçalho de ~48 px: título + botão **⚙ Ajustes** (diálogo ou gaveta) com: tema como seletor de 3 opções (automático/claro/escuro — hoje é um botão que alterna 3 estados), canhoto, instalar, e **Backup** (exportar/importar JSON, movido do Repertório) com **"Apagar tudo" numa área de perigo separada** (hoje fica ao lado de Exportar).
+- A busca aparece só na aba Acordes (no celular); no desktop pode continuar no topo.
+- **Aceite:** no celular a 390×844, o diagrama completo com os botões Dedilhar/Batida cabe na 1ª tela da aba Acordes; tema/canhoto/backup continuam funcionando e persistindo.
+
+### 7b — Seletor de acorde acima do diagrama (esforço médio)
+- Hoje, no celular, trocar de acorde exige rolar ~1000 px: instrumento/tônica/tipo ficam abaixo do diagrama, dos botões e das miniaturas.
+- Barra compacta acima do diagrama: `C ▾ · maior ▾ · Violão ▾`. Tocar abre uma gaveta inferior (bottom sheet) com tônica + abas de tipo; escolher fecha a gaveta e o diagrama segue à vista. Instrumento pode ser um seletor na própria barra.
+- Abas de tipo com nomes curtos (*Básicos*, *7ª e 6ª*, *9ª/11ª/13ª*, *Alterados*, *Inversões*) e esmaecido na borda indicando que há mais para rolar (hoje "Altera…" fica cortado sem pista).
+- Desktop: manter a coluna lateral atual (a barra pode ser só mobile).
+- **Aceite:** trocar tônica e tipo no celular sem rolar a página; teclado e leitores de tela conseguem abrir/fechar a gaveta (foco preso, Esc fecha).
+
+### 7c — Correções rápidas de clareza (esforço baixo)
+1. **Placeholders que parecem conteúdo:** `x32010` (Identificar) e a tablatura de exemplo no textarea, cinza e monoespaçados, parecem valores preenchidos → "ex.: x32010" / textarea vazio (o botão Exemplo já existe).
+2. **Ajuda permanente** ("Toque numa corda… Sem som? Confira o volume…") → dica só na 1ª visita (guardar em prefs); aviso de som só quando `audioState()` não for `running` após um toque.
+3. **Linha técnica** "Violão · Padrão (E A D G B E) · E2 A2 D3 G3 B3 E4" → mostrar só quando a afinação não for a padrão do instrumento.
+4. **Navegação de posições repetida** (setas + "Posição 1/8" + miniaturas; deslizar não é descoberto) → no celular, miniaturas + contador; dica "deslize para trocar" na 1ª vez.
+5. **Identificar:** a instrução "Monte um shape com ao menos 2 cordas tocadas" aparece como item "1." de lista numerada → mensagem fora da lista; resultados como cartões clicáveis que abrem o acorde no dicionário.
+6. **Bug:** o braço da Tablatura (`renderFretboard`) rotula as duas cordas Mi como "E"; usar os mesmos rótulos de `tabLabels` (a de cima "e").
+7. **Contraste:** textos auxiliares de 11–12 px em `--muted` no limite do legível → mínimo 13 px ou cor mais forte (verificar contraste AA nos dois temas).
+
+### 7d — Tablatura em Biblioteca / Player / Editar (esforço alto)
+- Hoje é um formulário longo: no celular o braço fica ~1500 px abaixo do Tocar (não dá para ver controles + tablatura + braço ao tocar); o texto aparece duas vezes (textarea e visualização); ajustes raros pesam igual aos comuns.
+- **Biblioteca:** lista de tablaturas salvas + Nova, Importar MusicXML, Exemplo.
+- **Player:** tablatura em destaque; **barra de transporte fixa embaixo** (▶/■, BPM, velocidade, A–B, repetir); braço compacto fixo acima da barra. Ajustes avançados ("Cada traço", "Tocar acordes das anotações", contagem de entrada) num painel recolhido.
+- **Editar:** Texto ou Grade, aberto a partir do Player; a visualização duplicada some no modo texto.
+- **Linguagem:** "A"/"B"/"✕" → "Marcar início"/"Marcar fim"/"Limpar" (ou arrastar sobre a tablatura para marcar o trecho); durações da grade em figuras (♪ colcheia, ♩ semínima…) em vez de "passos"; "Cada traço" → "Cada traço vale".
+- **Aceite:** no celular, durante a reprodução, a nota destacada, o braço e o botão Parar ficam visíveis ao mesmo tempo sem rolar; os critérios da 6a/6b/6c continuam passando.
+
+### 7e — Abas também no desktop + repertório mais fácil (esforço médio)
+- Desktop hoje é uma página única sem navegação; a Tablatura fica ~1400 px abaixo do topo → usar as mesmas 4 seções (Acordes · Repertório · Tablatura · Identificar) como abas no topo, mantendo o layout de 2 colunas dentro de cada uma.
+- Progressões: o placeholder usa "→", que ninguém sabe digitar → deixar claro o separador aceito (conferir `splitProgression`) e adicionar **"+ Adicionar à progressão"** no visualizador do acorde.
+- Primeira visita: tour curto de 3 passos (escolher acorde → ouvir → favoritar), dispensável e guardado em prefs.
+- **Aceite:** no desktop, cada seção abre por aba sem rolar; rota/URL (`#/…`) continua funcionando.
