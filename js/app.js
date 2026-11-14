@@ -4,6 +4,7 @@ import { parseChord, suggest } from './parser.js';
 import { INSTRUMENTS, DEFAULT_INSTRUMENT, DEFAULT_TUNING } from './instruments.js';
 import { getVoicings } from './voicings.js';
 import { renderDiagram } from './diagram.js';
+import { play, unlock } from './audio.js';
 
 const $ = id => document.getElementById(id);
 const state = {
@@ -128,11 +129,12 @@ function renderViewer() {
     main.replaceChildren(Object.assign(document.createElement('p'), { className: 'empty', textContent: 'Sem posição viável para este acorde neste instrumento/afinação.' }));
     $('posicao-rotulo').textContent = '';
   } else {
-    main.replaceChildren(renderDiagram(v, inst(), tun()));
+    main.replaceChildren(renderDiagram(v, inst(), tun(), { onString: course => playCurrent('dedilhar', course) }));
     $('posicao-rotulo').innerHTML = '';
     $('posicao-rotulo').append(v.label);
     if (v.nick && v.nick.toLowerCase() !== v.label.toLowerCase()) $('posicao-rotulo').append(Object.assign(document.createElement('small'), { textContent: v.nick }));
   }
+  $('tocar-dedilhar').disabled = $('tocar-batida').disabled = !v;
   $('posicao-contador').textContent = `Posição ${voicings.length ? idx + 1 : 0}/${voicings.length}`;
   $('anterior').disabled = idx <= 0;
   $('proxima').disabled = idx >= voicings.length - 1;
@@ -176,6 +178,12 @@ function move(d) {
   state.idx = i;
   renderViewer();
   renderAnalysis();
+}
+
+// ---------- Áudio ----------
+function playCurrent(mode, course = null) {
+  const v = state.voicings[state.idx];
+  if (v) play(v, state.instrument, tun(), { mode, course });
 }
 
 // ---------- Busca com autocomplete ----------
@@ -230,6 +238,13 @@ function setupSearch() {
 
 // ---------- Início ----------
 $('anterior').addEventListener('click', () => move(-1));
+$('tocar-dedilhar').addEventListener('click', () => playCurrent('dedilhar'));
+$('tocar-batida').addEventListener('click', () => playCurrent('batida'));
+// Retoma o AudioContext já no primeiro gesto (iOS/Safari exigem gesto do usuário)
+for (const ev of ['pointerdown', 'keydown']) document.addEventListener(ev, function first() {
+  document.removeEventListener(ev, first);
+  unlock();
+}, { passive: true });
 $('proxima').addEventListener('click', () => move(1));
 document.addEventListener('keydown', e => {
   if (e.target.closest('input, [role="tab"]')) return;

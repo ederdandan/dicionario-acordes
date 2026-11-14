@@ -103,6 +103,13 @@ body {
 .thumb[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
 .empty { color: var(--muted); text-align: center; padding: 24px 0; }
 
+/* Áudio */
+.play { display: flex; justify-content: center; gap: 8px; margin-bottom: 4px; }
+.play-btn { font-weight: 600; }
+.play-hint { margin: 0 0 10px; text-align: center; font-size: .75rem; color: var(--muted); }
+.diagram.playable .hit { cursor: pointer; outline: none; }
+.diagram.playable .hit:hover, .diagram.playable .hit:focus-visible { fill: var(--accent-soft); fill-opacity: .55; }
+
 /* Análise */
 .facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 12px; }
 .facts dt { color: var(--muted); }

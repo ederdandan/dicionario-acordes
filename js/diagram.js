@@ -24,7 +24,7 @@ export function describeVoicing(voicing, tuning) {
  * Desenha o diagrama. Ordem das colunas: corda/par mais grave à esquerda
  * (invertida se leftHanded). Cores via variáveis CSS (--dg-*).
  */
-export function renderDiagram(voicing, instrument, tuning, { leftHanded = false, compact = false } = {}) {
+export function renderDiagram(voicing, instrument, tuning, { leftHanded = false, compact = false, onString = null } = {}) {
   const n = voicing.frets.length;
   const colW = 28, rowH = 34, padL = 36, padR = 18, top = 34;
   const rows = voicing.rows || 4;
@@ -93,6 +93,27 @@ export function renderDiagram(voicing, instrument, tuning, { leftHanded = false,
       }, String(voicing.fingers[i])));
     }
   });
+  // Áreas clicáveis por corda/par tocado (ouvir a corda sozinha). Com elas o SVG vira um grupo
+  // (role=img esconderia os botões dos leitores de tela).
+  if (onString) {
+    svg.setAttribute('role', 'group');
+    svg.classList.add('playable');
+    voicing.frets.forEach((f, i) => {
+      if (f < 0) return;
+      const c = tuning.courses[i];
+      const hit = el('rect', {
+        x: x(i) - colW / 2, y: top - 28, width: colW, height: rows * rowH + 28, fill: 'transparent',
+        class: 'hit', role: 'button', tabindex: 0, 'data-course': i,
+        'aria-label': `Tocar ${c.label} (${voicing.courseNotes[i]})`,
+      });
+      const fire = () => onString(i);
+      hit.addEventListener('click', fire);
+      hit.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fire(); }
+      });
+      svg.append(hit);
+    });
+  }
   // Legenda: nota de cada corda/par; na viola, número do par e tipo (8ª = oitavado, = uníssono)
   if (!compact) {
     const ly = top + rows * rowH + 18;
