@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Testes — Dicionário de Acordes</title>
+  <link rel="stylesheet" href="./css/app.css">
+  <style>
+    main { max-width: 900px; margin: 0 auto; padding: 16px; }
+    .ok { color: #2e7d32; } .fail { color: #c62828; font-weight: 600; }
+    li { margin: 2px 0; } code { font-size: .9em; }
+    #resumo { font-size: 1.2rem; font-weight: 700; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Testes dos critérios de aceite — Fase 1</h1>
+  <p id="resumo">Rodando…</p>
+  <ol id="resultados"></ol>
+  <h2>Validação do <code>curated.js</code></h2>
+  <ul id="curados"></ul>
+</main>
+<script type="module">
+import { parseChord } from './js/parser.js';
+import { chordNotes, CHORD_TYPES, ROOT_GRID, noteToMidi } from './js/theory.js';
+import { getVoicings, checkShape, curatedFor, curatedReport } from './js/voicings.js';
+import { INSTRUMENTS } from './js/instruments.js';
+
+const results = [];
+const report = (name, ok, detail = '') => {
+  results.push({ name, ok, detail });
+  (ok ? console.log : console.error)(`${ok ? '✔' : '✘'} ${name}${detail ? ' — ' + detail : ''}`);
+};
+const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const fmt = v => v.frets.map(f => (f < 0 ? 'x' : f)).join('');
+const V = sym => getVoicings(parseChord(sym), 'violao', 'padrao', { max: 8 });
+const courses = INSTRUMENTS.violao.tunings.padrao.courses.map(c => ({ pc: noteToMidi(c.notes[0]) % 12, low: noteToMidi(c.notes[0]) }));
+const sounding = v => v.frets.map((f, i) => (f < 0 ? null : { pc: (courses[i].pc + f) % 12, midi: courses[i].low + f })).filter(Boolean);
+
+// 1) Geração completa (primeiro, sem cache): todos os tipos × 12 tônicas
+{
+  const t0 = performance.now();
+  const sem = [];
+  for (const r of ROOT_GRID) for (const t of CHORD_TYPES) {
+    const c = parseChord(r + t.q);
+    if (!c || !getVoicings(c, 'violao', 'padrao').length) sem.push(r + t.q);
+  }
+  const ms = performance.now() - t0;
+  report(`Todos os ${CHORD_TYPES.length} tipos × 12 tônicas têm ≥ 1 posição`, sem.length === 0, sem.join(', '));
+  report('Geração completa < 2 s', ms < 2000, `${ms.toFixed(0)} ms`);
+}
+
+// 2) Parser
+const P = (txt, exp) => {
+  const got = parseChord(txt);
+  const ok = exp === null ? got === null : got && Object.entries(exp).every(([k, v]) => got[k] === v);
+  report(`parseChord("${txt}")`, !!ok, JSON.stringify(got));
+};
+P('Fá#m7', { symbol: 'F#m7' });
+P('Dó menor', { symbol: 'Cm' });
+P('Bbmaj7', { symbol: 'Bb7M' });
+P('G7b9', { symbol: 'G7(b9)' });
+P('D/F#', { symbol: 'D/F#', bass: 'F#' });
+P('xyz', null);
+P('Si bemol maior', { symbol: 'Bb' });
+P('Am/G', { symbol: 'Am/G', bass: 'G' });
+P('Cø', { symbol: 'Cm7(b5)' });
+P('C6/9', { symbol: 'C6/9', bass: null });
+
+// 3) Notas e grafia
+const N = (sym, names) => {
+  const got = chordNotes(parseChord(sym)).names;
+  report(`Notas de ${sym}`, eq(got, names), got.join(' '));
+};
+N('C7', ['Dó', 'Mi', 'Sol', 'Sib']);
+N('E', ['Mi', 'Sol#', 'Si']);
+N('Bb7M', ['Sib', 'Ré', 'Fá', 'Lá']);
+
+// 4) Primeira posição no violão
+const FIRST = { C: ['x32010'], G: ['320003', '320033'], D: ['xx0232'], Am: ['x02210'], E: ['022100'], F: ['133211'], Bm: ['x24432'] };
+for (const [sym, exp] of Object.entries(FIRST)) {
+  const v = V(sym)[0];
+  report(`1ª posição de ${sym} ∈ {${exp.join(', ')}}`, !!v && exp.includes(fmt(v)), v ? `${fmt(v)} (${v.label})` : 'nenhuma');
+}
+{
+  const f = V('F')[0], bm = V('Bm')[0];
+  report('F: pestana na 1ª casa', f.barres.some(b => b.fret === 1), JSON.stringify(f.barres));
+  report('Bm: pestana na 2ª casa', bm.barres.some(b => b.fret === 2), JSON.stringify(bm.barres));
+}
+
+// 5) G/B — Si é a nota mais grave em todas as posições
+{
+  const vs = V('G/B');
+  const bad = vs.filter(v => { const s = sounding(v); return s.reduce((a, b) => (b.midi < a.midi ? b : a)).pc !== 11; });
+  report(`G/B: baixo em Si nas ${vs.length} posições`, vs.length > 0 && !bad.length, bad.map(fmt).join(', '));
+}
+
+// 6) C13 — 3ª, 7b e 13ª em todas as posições
+{
+  const vs = V('C13');
+  const bad = vs.filter(v => { const pcs = new Set(sounding(v).map(s => s.pc)); return ![4, 10, 9].every(pc => pcs.has(pc)); });
+  report(`C13: 3ª, 7b e 13ª nas ${vs.length} posições`, vs.length > 0 && !bad.length, bad.map(fmt).join(', '));
+}
+
+// 7) Validação automática do curated.js
+{
+  curatedFor('violao', 'padrao');
+  const c = parseChord('C'), n = chordNotes(c);
+  const tCourses = courses;
+  const bads = { 'nota estranha (x32210)': [-1, 3, 2, 2, 1, 0], 'baixo errado (032010)': [0, 3, 2, 0, 1, 0], 'abertura > 4 (x3201 8)': [-1, 3, 2, 0, 1, 8], 'falta a 3ª (x3x01x)': [-1, 3, -1, 0, 1, -1] };
+  for (const [name, f] of Object.entries(bads)) report(`Shape inválido rejeitado: ${name}`, checkShape(f, n, tCourses) !== null, checkShape(f, n, tCourses));
+  report('Shape válido aceito: C x32010', checkShape([-1, 3, 2, 0, 1, 0], n, tCourses) === null);
+  report(`curated.js: ${curatedReport.valid} shapes válidos, ${curatedReport.invalid.length} descartados`, true);
+  const ul = document.getElementById('curados');
+  if (!curatedReport.invalid.length) ul.innerHTML = '<li class="ok">Nenhum shape descartado.</li>';
+  for (const s of curatedReport.invalid) {
+    const li = document.createElement('li');
+    li.className = 'fail';
+    li.textContent = `${s.id} · ${s.symbol} · ${s.f} — ${s.reason}`;
+    ul.append(li);
+  }
+}
+
+// Saída na tela
+const ol = document.getElementById('resultados');
+for (const r of results) {
+  const li = document.createElement('li');
+  li.className = r.ok ? 'ok' : 'fail';
+  li.textContent = `${r.ok ? '✔' : '✘'} ${r.name}${r.detail ? ' — ' + r.detail : ''}`;
+  ol.append(li);
+}
+const fails = results.filter(r => !r.ok).length;
+const resumo = document.getElementById('resumo');
+resumo.textContent = fails ? `${fails} de ${results.length} testes falharam` : `Todos os ${results.length} testes passaram ✔`;
+resumo.className = fails ? 'fail' : 'ok';
+window.__TEST_RESULTS__ = results;
+</script>
+</body>
+</html>
