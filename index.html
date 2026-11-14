@@ -193,6 +193,24 @@
         <button id="tab-importar" type="button" class="btn" title="Arquivo .musicxml, .xml ou .mxl (Guitar Pro, MuseScore, TuxGuitar…)">Importar MusicXML</button>
         <input id="tab-arquivo" type="file" accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/vnd.recordare.musicxml" hidden>
       </div>
+      <details class="tab-legenda">
+        <summary>Símbolos que o player entende</summary>
+        <dl>
+          <dt><code>5h7</code></dt><dd>hammer-on: o 7 soa sem tocar a corda de novo</dd>
+          <dt><code>7p5</code></dt><dd>pull-off</dd>
+          <dt><code>5t12</code></dt><dd>tapping (como hammer-on)</dd>
+          <dt><code>5/7</code> <code>7</code> <code>5s7</code></dt><dd>slide subindo / descendo; <code>/7</code> sozinho = slide de entrada</dd>
+          <dt><code>7b9</code> <code>7^9</code></dt><dd>bend até a altura da casa 9; <code>7b</code> sem alvo = 1 tom</dd>
+          <dt><code>7b9r7</code></dt><dd>bend e release (volta)</dd>
+          <dt><code>7~~~</code></dt><dd>vibrato</dd>
+          <dt><code>(5)</code></dt><dd>nota fantasma (mais fraca)</dd>
+          <dt><code>&lt;12&gt;</code></dt><dd>harmônico natural (12, 7, 5, 4…)</dd>
+          <dt><code>x</code></dt><dd>nota abafada (som percussivo)</dd>
+          <dt><code>PM-----</code></dt><dd>palm mute numa linha acima ou abaixo do bloco, alinhada às colunas</dd>
+          <dt><code>let ring--</code></dt><dd>deixa soar (anula o PM no trecho)</dd>
+          <dt><code>|</code></dt><dd>barra de compasso (não conta tempo); outros símbolos só ocupam tempo</dd>
+        </dl>
+      </details>
       <p id="tab-msg" class="form-msg" aria-live="polite"></p>
       <div id="tab-view" class="tab-view" aria-label="Tablatura (toque num número para tocar dali)"></div>
       <div id="tab-braco" class="tab-braco"></div>

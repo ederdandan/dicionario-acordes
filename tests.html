@@ -365,6 +365,22 @@ G#|-5-----------|
  E|--------A--E7|
  B|---------PM--|`, 5, { isChord: x => /^[A-G]/.test(x) });
   report('parseTab: anotação de acorde vira evento no passo da coluna', ch.events.filter(e => e.chord).map(e => `${e.chord}@${e.step}`).join() === 'E@5,A@8,E7@11' && ch.ignored.join() === 'PM' && ch.blocks[0].chords.length === 3, JSON.stringify(ch.events));
+  const fx = parseTab(`   PM-----
+e|-5h7p5-/9-12b14r12-<12>~~-(3)-x-5b-|
+B|---------------------------------|
+G|---------------------------------|
+D|---------------------------------|
+A|---------------------------------|
+E|---------------------------------|`, 6);
+  const fe = fx.events?.map(e => e.fx?.[5]) || [];
+  report('parseTab: técnicas h p / b r ~ ( ) < > x b-sem-alvo e linha de PM',
+    !fx.error && fe[1]?.tech === 'hammer' && fe[1].from === 5 && fe[2]?.tech === 'pull' && fe[3]?.tech === 'slide' && fe[3].slideIn
+    && fe[5]?.tech === 'bend' && fe[5].from === 12 && fe[6]?.tech === 'release' && fe[6].from === 14
+    && fe[7]?.harm === 12 && fe[7].vib && fe[8]?.ghost && fe[9]?.dead && fx.events[9].frets[5] === -1 && fe[10]?.bendUp === 2
+    && fe[0]?.pm && fe[2]?.pm && !fe[3]?.pm && fx.techniques.join() === 'hammer,pull,slide,bend,release,vib,ghost,harm,dead,pm',
+    fx.error || JSON.stringify(fx.events.map(e => e.fx?.[5])));
+  report('parseTab: "xxx" são notas abafadas, não anotação', parseTab(`e|-xxx-0-|
+B|-------|`, 2).events?.length === 4);
   const uk = parseTab(`A|--0--|
 E|--0--|
 C|--0--|

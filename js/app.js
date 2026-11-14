@@ -6,7 +6,7 @@ import { INSTRUMENTS, DEFAULT_INSTRUMENT, DEFAULT_TUNING } from './instruments.j
 import { getVoicings, identifyChord } from './voicings.js';
 import { renderDiagram, renderEditor, renderFretboard } from './diagram.js';
 import { play, unlock, scheduleFrets, scheduleClick, stopAll, audioNow, audioLatency } from './audio.js';
-import { parseTab, stepSeconds, TAB_EXAMPLE, eventsToGrid, gridToText, gridStarts, tabLabels } from './tab.js';
+import { parseTab, stepSeconds, TAB_EXAMPLE, TECH_NAMES, eventsToGrid, gridToText, gridStarts, tabLabels } from './tab.js';
 import { createStorage, favoriteId, formatRoute, parseRoute, splitProgression } from './storage.js';
 
 const $ = id => document.getElementById(id);
@@ -702,6 +702,7 @@ function tabParse() {
   for (const e of r.events || []) if (e.chord) e.frets = (play && getVoicings(parseChord(e.chord), i, t, { max: 1 })[0]?.frets) || e.frets;
   $('tab-msg').textContent = r.error || [
     chords.length ? `Acordes${play ? '' : ' (sem som)'}: ${chords.join(', ')}` : '',
+    r.techniques?.length ? `Técnicas: ${r.techniques.map(k => TECH_NAMES[k]).join(', ')}` : '',
     r.ignored?.length ? `Anotações ignoradas: ${r.ignored.join(', ')}` : '',
   ].filter(Boolean).join(' · ');
   TAB.parsed = r.error === undefined ? r : null;
@@ -728,6 +729,8 @@ function renderTabView() {
         pre.append(line.slice(pos, nt.col));
         const sp = Object.assign(document.createElement('span'), { className: nt.text ? 'tn tc' : 'tn', textContent: line.substr(nt.col, nt.len) });
         sp.dataset.ev = nt.ev;
+        const tips = fxNames(nt.fx);
+        if (tips) { sp.title = tips; sp.classList.add('tfx'); }
         (TAB.spans[nt.ev] ||= []).push(sp);
         pre.append(sp);
         pos = nt.col + nt.len;
@@ -738,6 +741,13 @@ function renderTabView() {
   }));
   renderAB();
   renderBoard(TAB.cursor >= 0 ? p.events[TAB.cursor].frets : null);
+}
+
+/** Descrição das técnicas de uma nota (dica ao passar o mouse). */
+function fxNames(f) {
+  if (!f) return '';
+  const k = [f.tech, ...['vib', 'ghost', 'harm', 'dead', 'pm', 'ring'].filter(x => f[x] !== undefined), f.bendUp && 'bend'];
+  return [...new Set(k.filter(Boolean))].map(x => TECH_NAMES[x]).join(' · ');
 }
 
 /** Braço do instrumento com as casas do evento atual (ou vazio). */
@@ -784,7 +794,8 @@ function tabSchedule() {
     }
     const e = ev[TAB.next], when = TAB.start + e.step * TAB.dt;
     if (when > ahead) return;
-    scheduleFrets(e.frets, TAB.inst, TAB.tun, when, e.chord ? { strum: 0.018, gain: 0.6 } : undefined);
+    const dur = ((ev[TAB.next + 1]?.step ?? p.steps) - e.step) * TAB.dt;
+    scheduleFrets(e.frets, TAB.inst, TAB.tun, when, e.chord ? { strum: 0.018, gain: 0.6 } : { fx: e.fx, dur });
     TAB.queue.push({ time: when, ev: TAB.next++ });
   }
 }
