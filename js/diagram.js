@@ -1,4 +1,6 @@
 // diagram.js — renderização SVG do diagrama de acorde (viewBox responsivo).
+import { tabLabels } from './tab.js';
+
 const NS = 'http://www.w3.org/2000/svg';
 
 function el(tag, attrs = {}, text) {
@@ -205,9 +207,10 @@ export function renderFretboard(frets, instrument, tuning, { maxFret = 12, leftH
     const x = X(padL + openW + f * fw);
     svg.append(el('line', { x1: x, x2: x, y1: top - 4, y2: top + (n - 1) * rh + 4, stroke: grid, 'stroke-width': 1 }));
   }
+  const labels = tabLabels(tuning); // mesmos rótulos da tablatura (Mi aguda = "e")
   tuning.courses.forEach((c, i) => {
     svg.append(el('line', { x1: X(padL), x2: X(padL + openW + maxFret * fw), y1: y(i), y2: y(i), stroke: grid, 'stroke-width': c.notes.length > 1 ? 2 : 1.2 }));
-    svg.append(el('text', { x: X(padL - 6), y: y(i) + 4, 'text-anchor': leftHanded ? 'start' : 'end', 'font-size': 10, fill: grid }, c.notes[0].replace(/-?\d+$/, '')));
+    svg.append(el('text', { x: X(padL - 6), y: y(i) + 4, 'text-anchor': leftHanded ? 'start' : 'end', 'font-size': 10, fill: grid }, labels[i]));
   });
   frets.forEach((f, i) => {
     if (f < 0 || f > maxFret) return;

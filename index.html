@@ -24,14 +24,8 @@
 </head>
 <body data-view="acordes">
   <header class="topbar">
-    <div class="brand-row">
-      <h1 class="brand">Dicionário de Acordes</h1>
-      <div class="top-actions">
-        <button id="instalar" type="button" class="btn small" hidden>⤓ Instalar</button>
-        <button id="tema" type="button" class="btn small">Tema: automático</button>
-        <button id="canhoto" type="button" class="btn small" aria-pressed="false">Canhoto</button>
-      </div>
-    </div>
+    <h1 class="brand">Dicionário de Acordes</h1>
+    <button id="ajustes-abrir" type="button" class="btn gear" aria-haspopup="dialog" aria-controls="ajustes"><span aria-hidden="true">⚙</span> Ajustes</button>
     <div class="search" role="search">
       <label for="busca" class="sr-only">Buscar acorde</label>
       <input id="busca" type="text" autocomplete="off" spellcheck="false"
@@ -81,12 +75,13 @@
         <button id="tocar-batida" type="button" class="btn play-btn">▶ Batida</button>
         <button id="favoritar" type="button" class="btn" aria-pressed="false">☆ Favoritar</button>
       </div>
-      <p class="play-hint">Toque numa corda do diagrama para ouvi-la sozinha. Sem som? Confira o volume de mídia do aparelho.</p>
-      <div class="pos-nav">
+      <p id="dica-cordas" class="play-hint" hidden>Dica: toque numa corda do diagrama para ouvi-la sozinha.</p>
+      <div class="pos-nav viewer-nav">
         <button id="anterior" type="button" class="btn" aria-label="Posição anterior">◀</button>
         <span id="posicao-contador" class="pos-count" aria-live="polite">Posição 0/0</span>
         <button id="proxima" type="button" class="btn" aria-label="Próxima posição">▶</button>
       </div>
+      <p id="dica-deslizar-vis" class="swipe-hint" hidden aria-hidden="true">← Deslize no diagrama para trocar de posição →</p>
       <div id="miniaturas" class="thumbs" role="group" aria-label="Posições"></div>
     </section>
 
@@ -116,14 +111,6 @@
         <p id="prog-msg" class="form-msg" aria-live="polite"></p>
       </form>
       <ul id="progressoes" class="item-list"></ul>
-      <h2 class="panel-title">Backup</h2>
-      <div class="backup">
-        <button id="exportar" type="button" class="btn">Exportar JSON</button>
-        <button id="importar" type="button" class="btn">Importar JSON</button>
-        <button id="apagar-tudo" type="button" class="btn">Apagar tudo</button>
-        <input id="importar-arquivo" type="file" accept="application/json,.json" hidden>
-      </div>
-      <p id="backup-msg" class="form-msg" aria-live="polite"></p>
     </section>
 
     <section class="panel reverse" data-view="identificar" aria-label="Identificar acorde">
@@ -131,7 +118,7 @@
       <p class="hint">Toque no braço para montar um shape (acima da corda: muda ↔ solta) ou digite as casas.</p>
       <div class="reverse-input">
         <label for="reverso-casas">Casas</label>
-        <input id="reverso-casas" type="text" autocomplete="off" spellcheck="false" placeholder="x32010">
+        <input id="reverso-casas" type="text" autocomplete="off" spellcheck="false" placeholder="ex.: x32010">
         <button id="reverso-limpar" type="button" class="btn small">Limpar</button>
       </div>
       <div id="reverso-braco" class="diagram-editor"></div>
@@ -140,7 +127,8 @@
         <span id="reverso-janela" class="pos-count">Casas 1–5</span>
         <button id="reverso-mais" type="button" class="btn small" aria-label="Casas mais agudas">▶</button>
       </div>
-      <ol id="reverso-resultados" class="reverse-results" aria-live="polite"></ol>
+      <p id="reverso-msg" class="hint reverse-msg" aria-live="polite"></p>
+      <ul id="reverso-resultados" class="result-cards"></ul>
     </section>
     <section class="panel tabmod" data-view="tablatura" aria-label="Tablatura">
       <h2 class="panel-title">Tablatura</h2>
@@ -155,7 +143,7 @@
       </div>
       <div id="tab-edit-texto">
       <label for="tab-texto" class="hint">Cole ou digite a tablatura (linha de cima = corda mais aguda; um bloco por sistema).</label>
-      <textarea id="tab-texto" class="tab-text" rows="8" spellcheck="false" autocomplete="off" placeholder="e|-------0-------0-|&#10;B|-----1---1-----1-|&#10;G|---0-------0-----|&#10;D|-----------------|&#10;A|-3---------------|&#10;E|-----------------|"></textarea>
+      <textarea id="tab-texto" class="tab-text" rows="8" spellcheck="false" autocomplete="off" placeholder="Cole aqui a tablatura (ou toque em Exemplo)"></textarea>
       </div>
       <div id="tab-edit-grade" class="grid-editor" hidden>
         <p class="hint">Toque numa célula e digite a casa (teclado ou números abaixo). Setas movem; Delete apaga. As anotações do texto somem na 1ª edição pela grade.</p>
@@ -249,6 +237,36 @@
     <button id="atualizar" type="button" class="btn">Atualizar</button>
   </div>
 
+  <dialog id="ajustes" class="ios-dialog settings" aria-labelledby="ajustes-titulo">
+    <div class="dialog-head">
+      <h2 id="ajustes-titulo">Ajustes</h2>
+      <button id="ajustes-fechar" type="button" class="btn small" aria-label="Fechar ajustes">✕</button>
+    </div>
+    <fieldset class="opt">
+      <legend>Tema</legend>
+      <div class="seg-radio">
+        <label><input type="radio" name="tema" value="auto"> Automático</label>
+        <label><input type="radio" name="tema" value="light"> Claro</label>
+        <label><input type="radio" name="tema" value="dark"> Escuro</label>
+      </div>
+    </fieldset>
+    <label class="check opt"><input id="canhoto" type="checkbox"> Canhoto (diagramas espelhados)</label>
+    <button id="instalar" type="button" class="btn opt" hidden>⤓ Instalar o app</button>
+    <h3 class="opt-title">Backup</h3>
+    <p class="hint">Favoritos, progressões e tablaturas ficam só neste navegador. Exporte um arquivo para guardar uma cópia ou levar para outro aparelho.</p>
+    <div class="backup">
+      <button id="exportar" type="button" class="btn">Exportar backup</button>
+      <button id="importar" type="button" class="btn">Importar backup</button>
+      <input id="importar-arquivo" type="file" accept="application/json,.json" hidden>
+    </div>
+    <p id="backup-msg" class="form-msg" aria-live="polite"></p>
+    <div class="danger-zone">
+      <h3 class="opt-title">Área de perigo</h3>
+      <p class="hint">Apaga favoritos, progressões, tablaturas e preferências deste aparelho. Não dá para desfazer.</p>
+      <button id="apagar-tudo" type="button" class="btn danger-btn">Apagar tudo</button>
+    </div>
+  </dialog>
+
   <dialog id="ios-instalar" class="ios-dialog" aria-labelledby="ios-titulo">
     <h2 id="ios-titulo">Instalar no iPhone/iPad</h2>
     <ol>
@@ -263,7 +281,7 @@
     <h2 id="tab-salva-titulo">Tablatura salva — só neste aparelho</h2>
     <p id="tab-salva-texto">Ela fica guardada apenas neste navegador; não vai para nenhuma nuvem nem conta.
       Se você <strong>limpar os dados do navegador</strong>, desinstalar o app ou trocar de aparelho, <strong>ela se perde</strong>.
-      Exporte um arquivo para guardar uma cópia — depois é só usar <em>Repertório → Importar JSON</em>.</p>
+      Exporte um arquivo para guardar uma cópia — depois é só usar <em>⚙ Ajustes → Importar backup</em>.</p>
     <form method="dialog" class="dialog-actions">
       <button id="tab-salva-exportar" class="btn" value="tab">Exportar esta tablatura</button>
       <button id="tab-salva-backup" class="btn" value="all">Exportar backup completo</button>

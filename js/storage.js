@@ -3,9 +3,9 @@
 
 const KEY = 'dicionario-acordes:v1';
 const FORMAT = 'dicionario-acordes-backup';
-const DEFAULT_PREFS = { theme: 'auto', leftHanded: false, saveWarn: true };
+const DEFAULT_PREFS = { theme: 'auto', leftHanded: false, saveWarn: true, seen: {} };
 
-const empty = () => ({ favorites: [], progressions: [], tabs: [], prefs: { ...DEFAULT_PREFS } });
+const empty = () => ({ favorites: [], progressions: [], tabs: [], prefs: { ...DEFAULT_PREFS, seen: {} } });
 
 function getBackend(backend) {
   if (backend) return backend;
@@ -44,6 +44,9 @@ function sanitize(raw) {
     if (['auto', 'light', 'dark'].includes(raw.prefs.theme)) out.prefs.theme = raw.prefs.theme;
     out.prefs.leftHanded = raw.prefs.leftHanded === true;
     out.prefs.saveWarn = raw.prefs.saveWarn !== false; // aviso "fica só neste aparelho" ao salvar tablatura
+    // dicas de 1ª visita já vistas (tour, "deslize para trocar"…): { chave: true }
+    const seen = raw.prefs.seen && typeof raw.prefs.seen === 'object' ? raw.prefs.seen : {};
+    out.prefs.seen = Object.fromEntries(Object.keys(seen).filter(k => /^\w{1,24}$/.test(k) && seen[k] === true).slice(0, 32).map(k => [k, true]));
   }
   return out;
 }
@@ -102,7 +105,7 @@ export function createStorage({ key = KEY, backend } = {}) {
     },
     removeTab(id) { data.tabs = data.tabs.filter(t => t.id !== id); return persist(); },
     // Preferências
-    prefs: () => ({ ...data.prefs }),
+    prefs: () => ({ ...data.prefs, seen: { ...data.prefs.seen } }),
     setPref(k, v) { data.prefs = sanitize({ prefs: { ...data.prefs, [k]: v } }).prefs; return persist(); },
     // Backup
     exportJSON() {

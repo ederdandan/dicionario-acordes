@@ -5,7 +5,7 @@ import { parseChord, suggest } from './parser.js';
 import { INSTRUMENTS, DEFAULT_INSTRUMENT, DEFAULT_TUNING } from './instruments.js';
 import { getVoicings, identifyChord } from './voicings.js';
 import { renderDiagram, renderEditor, renderFretboard } from './diagram.js';
-import { play, unlock, scheduleFrets, scheduleClick, stopAll, audioNow, audioLatency } from './audio.js';
+import { play, unlock, scheduleFrets, scheduleClick, stopAll, audioNow, audioLatency, audioState } from './audio.js';
 import { parseTab, stepSeconds, TAB_EXAMPLE, TECH_NAMES, eventsToGrid, gridToText, gridStarts, tabLabels } from './tab.js';
 import { createStorage, favoriteId, formatRoute, parseRoute, splitProgression } from './storage.js';
 
@@ -97,8 +97,10 @@ function renderInstruments() {
     button(t.short || t.name, 'chip', () => setTuning(tid), {
       'aria-pressed': String(tid === state.tuning), title: t.name, 'aria-label': `Afinação ${t.name}`,
     })));
+  // Linha técnica só quando a afinação não é a padrão do instrumento
   const t = tun();
-  $('afinacao-info').textContent = `${inst().name} · ${t.name} · ${t.courses.map(c => c.notes.join('+')).join(' ')}`;
+  $('afinacao-info').hidden = state.tuning === Object.keys(inst().tunings)[0];
+  $('afinacao-info').textContent = `${t.name} · ${t.courses.map(c => c.notes.join('+')).join(' ')}`;
 }
 
 function renderTabs() {
@@ -149,6 +151,7 @@ function renderViewer() {
   $('posicao-contador').textContent = `Posição ${voicings.length ? idx + 1 : 0}/${voicings.length}`;
   $('anterior').disabled = idx <= 0;
   $('proxima').disabled = idx >= voicings.length - 1;
+  $('dica-deslizar-vis').hidden = !(mobile() && voicings.length > 1 && !seen('swipe'));
   $('miniaturas').replaceChildren(...voicings.map((vv, i) => {
     const b = button('', 'btn thumb', () => { state.idx = i; renderViewer(); renderAnalysis(); }, {
       'aria-pressed': String(i === idx), 'aria-label': `Posição ${i + 1}: ${vv.label}`,
@@ -200,7 +203,18 @@ function move(d) {
 // ---------- Áudio ----------
 function playCurrent(mode, course = null) {
   const v = state.voicings[state.idx];
-  if (v) play(v, state.instrument, tun(), { mode, course });
+  if (!v) return;
+  play(v, state.instrument, tun(), { mode, course });
+  checkSound();
+}
+
+/** Aviso de som só quando o áudio não conseguiu rodar depois de um toque. */
+let soundTimer = 0;
+function checkSound() {
+  clearTimeout(soundTimer);
+  soundTimer = setTimeout(() => {
+    if (audioState() !== 'running') notify('Sem som? Toque de novo e confira o volume de mídia do aparelho.');
+  }, 700);
 }
 
 // ---------- Busca com autocomplete ----------
@@ -277,30 +291,34 @@ function applyRoute(hash) {
   return true;
 }
 
-// ---------- Preferências: tema e canhoto ----------
-const THEMES = { auto: 'automático', light: 'claro', dark: 'escuro' };
+// ---------- Preferências (diálogo Ajustes): tema, canhoto, dicas já vistas ----------
 const lefty = () => store.prefs().leftHanded;
+const seen = k => store.prefs().seen[k] === true;
+const markSeen = k => { if (!seen(k)) store.setPref('seen', { ...store.prefs().seen, [k]: true }); };
 
 function applyPrefs() {
   const { theme, leftHanded } = store.prefs();
   if (theme === 'auto') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = theme;
-  $('tema').textContent = `Tema: ${THEMES[theme]}`;
-  $('tema').setAttribute('aria-label', `Tema ${THEMES[theme]} (alternar)`);
-  $('canhoto').setAttribute('aria-pressed', String(leftHanded));
+  document.querySelectorAll('input[name="tema"]').forEach(r => { r.checked = r.value === theme; });
+  $('canhoto').checked = leftHanded;
 }
 
-$('tema').addEventListener('click', () => {
-  const order = Object.keys(THEMES);
-  store.setPref('theme', order[(order.indexOf(store.prefs().theme) + 1) % order.length]);
+document.querySelectorAll('input[name="tema"]').forEach(r => r.addEventListener('change', () => {
+  store.setPref('theme', r.value);
   applyPrefs();
-});
-$('canhoto').addEventListener('click', () => {
-  store.setPref('leftHanded', !lefty());
+}));
+$('canhoto').addEventListener('change', () => {
+  store.setPref('leftHanded', $('canhoto').checked);
   applyPrefs();
   renderViewer();
   renderReverse();
+  renderBoard(TAB.cursor >= 0 && TAB.parsed ? TAB.parsed.events[TAB.cursor]?.frets : null);
 });
+$('ajustes-abrir').addEventListener('click', () => { $('backup-msg').textContent = ''; $('ajustes').showModal(); });
+$('ajustes-fechar').addEventListener('click', () => $('ajustes').close());
+// Toque fora do quadro (no fundo escurecido) fecha
+$('ajustes').addEventListener('click', e => { if (e.target === $('ajustes')) $('ajustes').close(); });
 
 // ---------- Favoritos ----------
 const currentFav = () => {
@@ -476,20 +494,27 @@ function renderReverse({ keepInput = false } = {}) {
   $('reverso-menos').disabled = rev.base <= 1;
   $('reverso-mais').disabled = rev.base >= 12 - REV_ROWS + 1;
 
-  const list = $('reverso-resultados');
+  const list = $('reverso-resultados'), msg = $('reverso-msg');
   if (rev.frets.filter(f => f >= 0).length < 2) {
-    list.replaceChildren(Object.assign(document.createElement('li'), { className: 'empty-item', textContent: 'Monte um shape com ao menos 2 cordas tocadas.' }));
+    msg.textContent = 'Monte um shape com ao menos 2 cordas tocadas.';
+    list.replaceChildren();
     return;
   }
   const found = identifyChord(rev.frets, state.instrument, state.tuning);
-  list.replaceChildren(...(found.length ? found.map(r => {
+  msg.textContent = !found.length ? 'Nenhum acorde conhecido com essas notas.'
+    : `${found.length === 1 ? 'Encontrado' : `${found.length} possibilidades`} — toque para abrir no dicionário:`;
+  list.replaceChildren(...found.map(r => {
     const li = document.createElement('li');
-    const b = button(r.symbol, 'chip', () => { selectChord(r.chord, { frets: rev.frets }); showView('acordes'); revealViewer(); }, { title: chordTitle(r.chord) });
     const notes = [r.rootInBass ? 'tônica no baixo' : `baixo em ${r.bassName}`];
     if (r.omitted) notes.push(`omite ${r.omitted} nota${r.omitted > 1 ? 's' : ''}`);
-    li.append(b, Object.assign(document.createElement('small'), { textContent: `${chordTitle(r.chord)} · ${notes.join(' · ')}` }));
+    const b = button('', 'result-card', () => { selectChord(r.chord, { frets: rev.frets }); showView('acordes'); revealViewer(); },
+      { 'aria-label': `Abrir ${r.symbol}: ${chordTitle(r.chord)}, ${notes.join(', ')}` });
+    b.append(Object.assign(document.createElement('strong'), { textContent: r.symbol }),
+      Object.assign(document.createElement('span'), { textContent: chordTitle(r.chord) }),
+      Object.assign(document.createElement('small'), { textContent: notes.join(' · ') }));
+    li.append(b);
     return li;
-  }) : [Object.assign(document.createElement('li'), { className: 'empty-item', textContent: 'Nenhum acorde conhecido com essas notas.' })]));
+  }));
 }
 
 $('reverso-casas').addEventListener('input', e => {
@@ -514,8 +539,10 @@ function setupPWA() {
       if (!waiting) return location.reload();
       waiting.postMessage({ type: 'SKIP_WAITING' });
     });
+    // Só recarrega numa ATUALIZAÇÃO: na 1ª visita o SW novo assume (clients.claim) sem precisar recarregar.
+    const hadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (reloading) return;
+      if (reloading || !hadController) return;
       reloading = true;
       location.reload();
     });
@@ -600,7 +627,9 @@ function addSwipe(el, onSwipe) {
   el.addEventListener('pointercancel', () => { id = null; });
   el.addEventListener('click', e => { if (swiped) { e.stopPropagation(); e.preventDefault(); swiped = false; } }, true);
 }
-addSwipe($('diagrama'), d => move(d));
+addSwipe($('diagrama'), d => {
+  if (move(d) && !seen('swipe')) { markSeen('swipe'); $('dica-deslizar-vis').hidden = true; }
+});
 addSwipe($('palco-diagrama'), d => goRehearsal(state.rehearsal.pos + d));
 
 // ---------- Modo palco ----------
@@ -816,6 +845,7 @@ function tabPlay(from = null, { countIn = $('tab-contagem').checked } = {}) {
   tabStop();
   const p = tabParse();
   if (!p || !unlock()) return;
+  checkSound();
   const r = tabRange();
   if (from === null || from < r.lo || from > r.hi) from = r.lo;
   const [i, t] = tabKey();
@@ -1208,6 +1238,8 @@ document.addEventListener('keydown', e => {
 });
 setupSearch();
 applyPrefs();
+// Dica das cordas: só na 1ª visita
+if (!seen('cordas')) { $('dica-cordas').hidden = false; markSeen('cordas'); }
 renderLibrary();
 window.addEventListener('hashchange', () => applyRoute(location.hash));
 if (!applyRoute(location.hash)) {
