@@ -14,7 +14,7 @@
 </head>
 <body>
 <main>
-  <h1>Testes dos critérios de aceite — Fases 1 a 6a</h1>
+  <h1>Testes dos critérios de aceite — Fases 1 a 6b</h1>
   <p id="resumo">Rodando…</p>
   <ol id="resultados"></ol>
   <h2>Validação do <code>curated.js</code></h2>
@@ -25,7 +25,7 @@ import { parseChord } from './js/parser.js';
 import { chordNotes, CHORD_TYPES, ROOT_GRID, noteToMidi } from './js/theory.js';
 import { getVoicings, checkShape, curatedFor, curatedReport, identifyChord } from './js/voicings.js';
 import { createStorage, formatRoute, parseRoute, splitProgression } from './js/storage.js';
-import { parseTab, stepSeconds, TAB_EXAMPLE } from './js/tab.js';
+import { parseTab, stepSeconds, TAB_EXAMPLE, eventsToGrid, gridToText, gridStarts, tabLabels } from './js/tab.js';
 import { INSTRUMENTS } from './js/instruments.js';
 import { renderDiagram } from './js/diagram.js';
 import { play, setContext, activeVoices, voicesFor, ksSamples } from './js/audio.js';
@@ -381,6 +381,25 @@ G|--2--|`, 4);
   const t = createStorage({ key: KEY }).tabs()[0];
   report('Tablatura sobrevive a recarregar e a exportar → limpar → importar', t?.text === TAB_EXAMPLE && t.bpm === 100 && t.unit === 8);
   localStorage.removeItem(KEY);
+}
+
+// ---------- Fase 6b: Grade ----------
+{
+  const tun = INSTRUMENTS.violao.tunings.padrao;
+  report('tabLabels: violão = E A D G B e; Rio Abaixo = G D g B d', tabLabels(tun).join(' ') === 'E A D G B e' && tabLabels(INSTRUMENTS.viola.tunings.rioAbaixo).join(' ') === 'G D g B d');
+  const ex = parseTab(TAB_EXAMPLE, 6);
+  const g = eventsToGrid(ex, 6);
+  report('eventsToGrid: 1 coluna por instante, durações somam os passos', g.length === 27 && g[0].frets.every(f => f < 0) && g.reduce((s, c) => s + c.dur, 0) === ex.steps, `${g.length} colunas`);
+  const txt = gridToText(g, tabLabels(tun));
+  const back = parseTab(txt, 6);
+  report('Grade → texto → parseTab → grade é idêntica (ida e volta)', !back.error && JSON.stringify(eventsToGrid(back, 6)) === JSON.stringify(g), back.error || '');
+  const cols = [{ frets: [-1, -1, -1, -1, -1, 12], dur: 4 }, { frets: [3, -1, -1, -1, -1, -1], dur: 4 }, { frets: [-1, -1, -1, -1, -1, -1], dur: 8 }, { frets: [0, 2, 2, 1, 0, 0], dur: 16 }];
+  const t2 = gridToText(cols, tabLabels(tun));
+  const p2 = parseTab(t2, 6);
+  report('gridToText: barra a cada compasso, pausa conta tempo, 2 dígitos = 1 nota', !p2.error && p2.events.map(e => e.step).join() === '0,4,16' && p2.events[0].frets[5] === 12 && p2.steps === 32 && t2.startsWith('e|12--------------|0---------------|'), t2);
+  report('gridStarts: passo inicial de cada coluna', gridStarts(cols).join() === '0,4,8,16');
+  const uk = gridToText([{ frets: [0, 0, 0, 3], dur: 1 }], tabLabels(INSTRUMENTS.ukulele.tunings[Object.keys(INSTRUMENTS.ukulele.tunings)[0]]));
+  report('gridToText: ukulele, linha de cima = corda mais aguda; grade curta ainda é lida', parseTab(uk, 4).events[0]?.frets.join() === '0,0,0,3', uk);
 }
 
 // Saída na tela

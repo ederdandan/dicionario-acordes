@@ -100,3 +100,74 @@ G|---2-------2-----|---2---2---------|
 D|-----------------|-0-------0-------|
 A|-0---------------|-----------------|
 E|-----------------|-----------------|`;
+
+// ---------- Grade (Fase 6b) ----------
+// Modelo da grade: cols = [{ frets: [-1|casa por corda, grave → aguda], dur: passos }].
+// O texto continua sendo o formato salvo: a grade é convertida de/para texto.
+
+/** Rótulos das linhas (grave → aguda): nome da nota da corda; nome repetido de uma mais grave → minúsculo (e, d). */
+export function tabLabels(tuning) {
+  const seen = new Set();
+  return tuning.courses.map(c => {
+    const l = c.notes[0].replace(/-?\d+$/, '');
+    const out = seen.has(l) ? l.toLowerCase() : l;
+    seen.add(l);
+    return out;
+  });
+}
+
+/** Largura em caracteres de uma coluna (um número de 2 dígitos ocupa 2). */
+export const colWidth = c => Math.max(1, c.dur, ...c.frets.map(f => (f >= 0 ? String(f).length : 0)));
+
+/** Resultado do parseTab → colunas da grade. Eventos no mesmo passo se fundem; pausa inicial vira coluna vazia. */
+export function eventsToGrid({ events, steps }, n) {
+  const byStep = new Map();
+  for (const e of events) {
+    const f = byStep.get(e.step) || new Array(n).fill(-1);
+    e.frets.forEach((x, i) => { if (x >= 0) f[i] = x; });
+    byStep.set(e.step, f);
+  }
+  const keys = [...byStep.keys()].sort((a, b) => a - b);
+  const cols = [];
+  if (keys[0] > 0) cols.push({ frets: new Array(n).fill(-1), dur: keys[0] });
+  keys.forEach((s, k) => cols.push({ frets: byStep.get(s), dur: Math.max(1, (keys[k + 1] ?? steps) - s) }));
+  return cols;
+}
+
+/** Passo inicial de cada coluna (mesma conta do texto gerado por gridToText). */
+export function gridStarts(cols) {
+  let s = 0;
+  return cols.map(c => { const at = s; s += colWidth(c); return at; });
+}
+
+/**
+ * Colunas → texto ASCII. labels grave → aguda; linha de cima = corda mais aguda.
+ * Barra a cada `measure` passos; `perLine` compassos por bloco (sistema).
+ */
+export function gridToText(cols, labels, { measure = 16, perLine = 2 } = {}) {
+  const n = labels.length, w = Math.max(...labels.map(l => l.length));
+  const blocks = [];
+  let cur = new Array(n).fill(''), acc = 0, bars = 0;
+  const flush = () => {
+    if (!cur[0]) return;
+    blocks.push(cur.map((s, i) => `${labels[i].padEnd(w)}|${s}`).reverse().join('\n'));
+    cur = new Array(n).fill('');
+  };
+  for (const c of cols) {
+    const width = colWidth(c);
+    cur = cur.map((s, i) => s + (c.frets[i] >= 0 ? String(c.frets[i]) : '').padEnd(width, '-'));
+    acc += width;
+    if (Math.floor(acc / measure) > bars) {
+      bars = Math.floor(acc / measure);
+      cur = cur.map(s => s + '|');
+      if (bars % perLine === 0) flush();
+    }
+  }
+  if (cur[0] && !cur[0].endsWith('|')) cur = cur.map(s => s + '|');
+  flush();
+  // parseTab só reconhece linhas com 3+ hífens: completa no fim (pausa) se faltar
+  const last = blocks.length - 1, lines = last >= 0 ? blocks[last].split('\n') : [];
+  const need = Math.max(0, ...lines.map(l => 3 - (l.match(/-/g) || []).length));
+  if (need) blocks[last] = lines.map(l => l.replace(/\|$/, '-'.repeat(need) + '|')).join('\n');
+  return blocks.join('\n\n');
+}

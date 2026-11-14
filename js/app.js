@@ -3,9 +3,9 @@ import { CATEGORIES, CHORD_TYPES, ROOT_GRID, TYPE_BY_Q, chordNotes, pcOf, spell,
 import { parseChord, suggest } from './parser.js';
 import { INSTRUMENTS, DEFAULT_INSTRUMENT, DEFAULT_TUNING } from './instruments.js';
 import { getVoicings, identifyChord } from './voicings.js';
-import { renderDiagram, renderEditor } from './diagram.js';
-import { play, unlock, scheduleFrets, stopAll, audioNow, audioLatency } from './audio.js';
-import { parseTab, stepSeconds, TAB_EXAMPLE } from './tab.js';
+import { renderDiagram, renderEditor, renderFretboard } from './diagram.js';
+import { play, unlock, scheduleFrets, scheduleClick, stopAll, audioNow, audioLatency } from './audio.js';
+import { parseTab, stepSeconds, TAB_EXAMPLE, eventsToGrid, gridToText, gridStarts, tabLabels } from './tab.js';
 import { createStorage, favoriteId, formatRoute, parseRoute, splitProgression } from './storage.js';
 
 const $ = id => document.getElementById(id);
@@ -672,10 +672,17 @@ window.addEventListener('popstate', () => {
   if (leaving || ignoreHash) { ignoreHash = false; syncHash(); }
 });
 
-// ---------- Tablatura (Fase 6a) ----------
+// ---------- Tablatura (Fases 6a/6b) ----------
 // Agendador com antecedência no relógio do Web Audio + destaque por quadro (requestAnimationFrame).
-const TAB = { parsed: null, playing: false, timer: 0, raf: 0, start: 0, next: 0, dt: 0.1, queue: [], spans: [], on: -1, editId: null };
+// O texto é a fonte de verdade (é o que se salva); a grade (6b) edita colunas e regrava o texto.
+const TAB = {
+  parsed: null, playing: false, timer: 0, raf: 0, start: 0, next: 0, dt: 0.1, queue: [], spans: [], on: -1, editId: null,
+  mode: 'texto', grid: null, sel: { col: 0, course: 0 }, colEv: [], cursor: -1, a: -1, b: -1, digit: null,
+};
 const tabKey = () => $('tab-instrumento').value.split('/');
+const tabTuning = () => { const [i, t] = tabKey(); return INSTRUMENTS[i].tunings[t]; };
+const tabSpeed = () => +$('tab-vel').value / 100;
+const DURS = [1, 2, 3, 4, 6, 8, 12, 16];
 
 function fillTabInstruments(value = `${state.instrument}/${state.tuning}`) {
   $('tab-instrumento').replaceChildren(...Object.values(INSTRUMENTS).flatMap(i => Object.entries(i.tunings).map(([tid, t]) =>
@@ -697,6 +704,9 @@ function tabParse() {
     r.ignored?.length ? `Anotações ignoradas: ${r.ignored.join(', ')}` : '',
   ].filter(Boolean).join(' · ');
   TAB.parsed = r.error === undefined ? r : null;
+  const n = TAB.parsed?.events.length ?? 0;
+  if (TAB.a >= n || TAB.b >= n) TAB.a = TAB.b = -1;
+  if (TAB.cursor >= n) TAB.cursor = -1;
   renderTabView();
   return TAB.parsed;
 }
@@ -705,7 +715,8 @@ function renderTabView() {
   const p = TAB.parsed;
   TAB.spans = [];
   TAB.on = -1;
-  if (!p) return $('tab-view').replaceChildren();
+  if (TAB.mode === 'grade') renderGrid();
+  if (!p) { $('tab-view').replaceChildren(); renderAB(); return renderBoard(null); }
   const w = Math.max(0, ...p.blocks.flatMap(b => b.labels.map(l => l.length)));
   $('tab-view').replaceChildren(...p.blocks.map(b => {
     const pre = Object.assign(document.createElement('pre'), { className: 'tab-block' });
@@ -724,6 +735,16 @@ function renderTabView() {
     });
     return pre;
   }));
+  renderAB();
+  renderBoard(TAB.cursor >= 0 ? p.events[TAB.cursor].frets : null);
+}
+
+/** Braço do instrumento com as casas do evento atual (ou vazio). */
+function renderBoard(frets) {
+  const [i] = tabKey(), tn = tabTuning();
+  const all = TAB.parsed?.events.flatMap(e => e.frets) || [];
+  const maxFret = Math.min(24, Math.max(12, ...all));
+  $('tab-braco').replaceChildren(renderFretboard(frets || new Array(tn.courses.length).fill(-1), INSTRUMENTS[i], tn, { maxFret, leftHanded: lefty() }));
 }
 
 function tabHighlight(ev) {
@@ -731,23 +752,34 @@ function tabHighlight(ev) {
   (TAB.spans[TAB.on] || []).forEach(s => { s.classList.remove('on'); s.classList.add('done'); });
   const cur = TAB.spans[ev] || [];
   cur.forEach(s => { s.classList.remove('done'); s.classList.add('on'); });
-  const sp = cur[0], pre = sp?.parentElement;
-  if (pre) {
-    pre.scrollLeft = sp.offsetLeft - pre.clientWidth / 2;
-    if (TAB.parsed.events[TAB.on]?.block !== TAB.parsed.events[ev].block) pre.scrollIntoView({ block: 'nearest' });
+  const sp = cur[0], box = sp?.closest('.tab-block, .grid-wrap');
+  if (box) {
+    box.scrollLeft = sp.offsetLeft - box.clientWidth / 2;
+    const prev = TAB.spans[TAB.on]?.[0]?.closest('.tab-block, .grid-wrap');
+    if (prev !== box) box.scrollIntoView({ block: 'nearest' });
   }
   TAB.on = ev;
+  TAB.cursor = ev;
+  renderBoard(TAB.parsed.events[ev].frets);
+}
+
+/** Trecho tocado: A–B (sempre em laço) ou a tablatura inteira (laço se "Repetir"). */
+function tabRange() {
+  const ev = TAB.parsed.events;
+  const ab = TAB.a >= 0 && TAB.b >= 0;
+  const lo = ab ? TAB.a : 0, hi = ab ? TAB.b : ev.length - 1;
+  return { lo, hi, loop: ab || $('tab-repetir').checked, from: ev[lo].step, to: ev[hi + 1]?.step ?? TAB.parsed.steps };
 }
 
 function tabSchedule() {
-  const p = TAB.parsed, ev = p.events;
+  const p = TAB.parsed, ev = p.events, r = tabRange();
   const ahead = audioNow() + (document.hidden ? 1.5 : 0.3); // em segundo plano o setInterval é atrasado
   for (;;) {
-    if (TAB.next >= ev.length) {
-      const end = TAB.start + p.steps * TAB.dt;
-      if (!$('tab-repetir').checked) { if (audioNow() > end && !TAB.queue.length) tabStop(false); return; }
+    if (TAB.next > r.hi) {
+      const end = TAB.start + r.to * TAB.dt;
+      if (!r.loop) { if (audioNow() > end && !TAB.queue.length) tabStop(false); return; }
       if (end > ahead) return;
-      TAB.start = end; TAB.next = 0; // repete do início, emendado no tempo
+      TAB.start = end - r.from * TAB.dt; TAB.next = r.lo; // volta ao início do trecho, emendado no tempo
     }
     const e = ev[TAB.next], when = TAB.start + e.step * TAB.dt;
     if (when > ahead) return;
@@ -765,16 +797,25 @@ function tabDraw() {
   TAB.raf = requestAnimationFrame(tabDraw);
 }
 
-function tabPlay(from = 0) {
+function tabPlay(from = null, { countIn = $('tab-contagem').checked } = {}) {
   tabStop();
   const p = tabParse();
   if (!p || !unlock()) return;
+  const r = tabRange();
+  if (from === null || from < r.lo || from > r.hi) from = r.lo;
   const [i, t] = tabKey();
+  const bpm = Math.min(240, Math.max(40, +$('tab-bpm').value || 90));
   Object.assign(TAB, {
-    inst: i, tun: INSTRUMENTS[i].tunings[t], dt: stepSeconds(+$('tab-bpm').value, +$('tab-unidade').value),
+    inst: i, tun: INSTRUMENTS[i].tunings[t], dt: stepSeconds(bpm, +$('tab-unidade').value) / tabSpeed(),
     next: from, queue: [], playing: true,
   });
-  TAB.start = audioNow() + 0.12 - p.events[from].step * TAB.dt;
+  let t0 = audioNow() + 0.12;
+  if (countIn) { // 1 compasso de 4 tempos no andamento de estudo
+    const beat = 60 / bpm / tabSpeed();
+    for (let k = 0; k < 4; k++) scheduleClick(t0 + k * beat, k === 0);
+    t0 += 4 * beat;
+  }
+  TAB.start = t0 - p.events[from].step * TAB.dt;
   $('tab-play').textContent = '■ Parar';
   tabSchedule();
   TAB.timer = setInterval(tabSchedule, 50);
@@ -792,6 +833,208 @@ function tabStop(silence = true) {
   $('tab-play').textContent = '▶ Tocar';
 }
 
+// ----- Repetição A–B -----
+function renderAB() {
+  TAB.spans.flat().forEach(s => s.classList.remove('mark-a', 'mark-b', 'in-ab'));
+  const ab = TAB.a >= 0 && TAB.b >= 0;
+  if (ab) for (let e = TAB.a; e <= TAB.b; e++) (TAB.spans[e] || []).forEach(s => s.classList.add('in-ab'));
+  (TAB.spans[TAB.a] || []).forEach(s => s.classList.add('mark-a'));
+  (TAB.spans[TAB.b] || []).forEach(s => s.classList.add('mark-b'));
+  $('tab-ab').textContent = ab ? `A–B: nota ${TAB.a + 1} → ${TAB.b + 1} (em laço)`
+    : TAB.a >= 0 ? `A na nota ${TAB.a + 1} — marque o B` : TAB.b >= 0 ? `B na nota ${TAB.b + 1} — marque o A` : 'A–B: desligado';
+}
+
+function setMark(which) {
+  if (!TAB.parsed) return;
+  const ev = TAB.playing && TAB.on >= 0 ? TAB.on : TAB.cursor;
+  if (ev < 0) return notify('Toque numa nota (ou selecione na grade) para marcar');
+  TAB[which] = ev;
+  if (TAB.a >= 0 && TAB.b >= 0 && TAB.a > TAB.b) [TAB.a, TAB.b] = [TAB.b, TAB.a];
+  renderAB();
+  if (TAB.playing && TAB.a >= 0 && TAB.b >= 0) tabPlay(TAB.a, { countIn: false });
+}
+
+// ----- Editor em grade (6b) -----
+const measure = () => +$('tab-unidade').value; // 4 tempos: 16 semicolcheias ou 8 colcheias
+
+function gridFromText() {
+  const n = tabTuning().courses.length;
+  const p = TAB.parsed;
+  TAB.grid = p ? eventsToGrid(p, n) : Array.from({ length: 8 }, () => ({ frets: new Array(n).fill(-1), dur: 2 }));
+  TAB.sel = { col: 0, course: n - 1 };
+}
+
+/** Grava a grade no texto (formato salvo) e re-lê. */
+function gridCommit() {
+  tabStop();
+  $('tab-texto').value = gridToText(TAB.grid, tabLabels(tabTuning()), { measure: measure() });
+  tabParse();
+}
+
+function setTabMode(mode) {
+  tabStop();
+  TAB.mode = mode;
+  $('tab-modo-texto').setAttribute('aria-pressed', String(mode === 'texto'));
+  $('tab-modo-grade').setAttribute('aria-pressed', String(mode === 'grade'));
+  $('tab-edit-texto').hidden = mode !== 'texto';
+  $('tab-edit-grade').hidden = mode !== 'grade';
+  $('tab-view').hidden = mode === 'grade';
+  if (mode === 'grade') {
+    if (tabParse() === null && $('tab-texto').value.trim()) { // texto com erro: não sobrescreve
+      setTabMode('texto');
+      return notify('Corrija o texto antes de abrir a grade');
+    }
+    gridFromText();
+  }
+  renderTabView();
+}
+
+function renderGrid() {
+  const g = TAB.grid;
+  if (!g) return;
+  const tn = tabTuning(), n = tn.courses.length, labels = tabLabels(tn);
+  TAB.sel.col = Math.max(0, Math.min(TAB.sel.col, g.length - 1));
+  TAB.sel.course = Math.max(0, Math.min(TAB.sel.course, n - 1));
+  const starts = gridStarts(g), m = measure();
+  // coluna → evento (pelo passo inicial)
+  const evAt = new Map((TAB.parsed?.events || []).map((e, k) => [e.step, k]).reverse());
+  TAB.colEv = starts.map(s => evAt.get(s) ?? -1);
+  const wrap = $('grade');
+  const hadFocus = wrap.contains(document.activeElement);
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  grid.style.gridTemplateColumns = `auto repeat(${g.length}, minmax(2.4em, auto))`;
+  for (let c = n - 1; c >= 0; c--) {
+    const row = document.createElement('div');
+    row.setAttribute('role', 'row');
+    row.className = 'grid-line';
+    row.append(Object.assign(document.createElement('span'), { className: 'gl', textContent: labels[c], role: 'rowheader' }));
+    g.forEach((col, k) => {
+      const f = col.frets[c];
+      const b = button(f >= 0 ? String(f) : '', 'gc', () => selectCell(k, c), {
+        role: 'gridcell', 'aria-label': `${tn.courses[c].label}, coluna ${k + 1}: ${f >= 0 ? `casa ${f}` : 'vazia'}`,
+      });
+      b.dataset.col = k; b.dataset.course = c;
+      if (k && Math.floor(starts[k] / m) > Math.floor(starts[k - 1] / m)) b.classList.add('bar');
+      if (TAB.colEv[k] >= 0) (TAB.spans[TAB.colEv[k]] ||= []).push(b);
+      row.append(b);
+    });
+    grid.append(row);
+  }
+  const durRow = document.createElement('div');
+  durRow.className = 'grid-line grid-dur';
+  durRow.setAttribute('aria-hidden', 'true');
+  durRow.append(Object.assign(document.createElement('span'), { className: 'gl' }));
+  g.forEach(col => durRow.append(Object.assign(document.createElement('span'), { textContent: col.dur })));
+  grid.append(durRow);
+  wrap.replaceChildren(grid);
+  markSel();
+  if (hadFocus) wrap.querySelector('.gc.sel')?.focus();
+}
+
+/** Aplica a seleção (sem recriar a grade: o duplo clique precisa do mesmo botão). */
+function markSel() {
+  const { col, course } = TAB.sel;
+  for (const b of $('grade').querySelectorAll('.gc')) {
+    const c = +b.dataset.col === col, sel = c && +b.dataset.course === course;
+    b.classList.toggle('selcol', c);
+    b.classList.toggle('sel', sel);
+    b.tabIndex = sel ? 0 : -1;
+    b.setAttribute('aria-selected', String(sel));
+  }
+  const d = TAB.grid[col]?.dur ?? 2;
+  $('grade-dur').replaceChildren(...[...new Set([...DURS, d])].sort((x, y) => x - y).map(v =>
+    Object.assign(document.createElement('option'), { value: v, textContent: `${v} ${v === 1 ? 'passo' : 'passos'}` })));
+  $('grade-dur').value = String(d);
+}
+
+function selectCell(col, course, focus = false) {
+  TAB.sel = { col, course };
+  TAB.digit = null;
+  TAB.cursor = TAB.colEv[col] >= 0 ? TAB.colEv[col] : TAB.cursor;
+  markSel();
+  if (focus) $('grade').querySelector('.gc.sel')?.focus();
+  renderBoard(TAB.grid[col]?.frets);
+}
+
+function gridSetFret(f) {
+  const col = TAB.grid[TAB.sel.col];
+  if (!col) return;
+  col.frets[TAB.sel.course] = f;
+  gridCommit();
+}
+
+/** Dígito digitado: dois seguidos na mesma célula (em 1,2 s) formam 10–24. */
+function gridDigit(d) {
+  const now = Date.now(), k = `${TAB.sel.col}:${TAB.sel.course}`;
+  let f = d;
+  if (TAB.digit && TAB.digit.k === k && now - TAB.digit.t < 1200 && TAB.digit.v * 10 + d <= 24 && TAB.digit.v > 0) f = TAB.digit.v * 10 + d;
+  TAB.digit = { k, v: f, t: now };
+  const keep = TAB.digit;
+  gridSetFret(f);
+  TAB.digit = keep;
+}
+
+function gridAddCol() {
+  const n = tabTuning().courses.length;
+  const dur = TAB.grid[TAB.sel.col]?.dur ?? 2;
+  TAB.grid.splice(TAB.sel.col + 1, 0, { frets: new Array(n).fill(-1), dur });
+  TAB.sel.col++;
+  gridCommit();
+}
+
+function gridDelCol() {
+  if (TAB.grid.length <= 1) { TAB.grid[0].frets.fill(-1); return gridCommit(); }
+  TAB.grid.splice(TAB.sel.col, 1);
+  gridCommit();
+}
+
+/** Insere a posição atual do dicionário na coluna selecionada (gerada para o instrumento da tablatura). */
+function gridInsertChord() {
+  const [i, t] = tabKey();
+  const v = i === state.instrument && t === state.tuning ? state.voicings[state.idx]
+    : getVoicings(state.chord, i, t, { max: 1 })[0];
+  if (!v) return notify(`Sem posição de ${state.chord.symbol} para este instrumento`);
+  TAB.grid[TAB.sel.col].frets = v.frets.slice();
+  gridCommit();
+  notify(`${state.chord.symbol} inserido`);
+}
+
+function gridKeys(e) {
+  const g = TAB.grid, n = tabTuning().courses.length;
+  if (!g || !e.target.closest('.gc')) return;
+  const { col, course } = TAB.sel;
+  const go = (c, s) => { e.preventDefault(); selectCell(Math.max(0, Math.min(g.length - 1, c)), Math.max(0, Math.min(n - 1, s)), true); };
+  if (e.key === 'ArrowLeft') go(col - 1, course);
+  else if (e.key === 'ArrowRight') go(col + 1, course);
+  else if (e.key === 'ArrowUp') go(col, course + 1);   // linha de cima = corda mais aguda
+  else if (e.key === 'ArrowDown') go(col, course - 1);
+  else if (e.key === 'Home') go(0, course);
+  else if (e.key === 'End') go(g.length - 1, course);
+  else if (/^[0-9]$/.test(e.key)) { e.preventDefault(); gridDigit(+e.key); }
+  else if (e.key === 'Delete' || e.key === 'Backspace' || e.key === 'x') { e.preventDefault(); gridSetFret(-1); }
+  else if (e.key === '+' || e.key === 'Insert') { e.preventDefault(); gridAddCol(); }
+  else if (e.key === '-') { e.preventDefault(); gridDelCol(); }
+}
+
+function setupGrid() {
+  $('grade-teclado').replaceChildren(
+    ...Array.from({ length: 13 }, (_, f) => button(String(f), 'btn key', () => gridSetFret(f), { 'aria-label': `Casa ${f}` })),
+    ...[15, 17].map(f => button(String(f), 'btn key', () => gridSetFret(f), { 'aria-label': `Casa ${f}` })),
+    button('⌫', 'btn key', () => gridSetFret(-1), { 'aria-label': 'Apagar a nota' }));
+  $('grade').addEventListener('keydown', gridKeys);
+  $('grade').addEventListener('dblclick', e => {
+    const k = +e.target.closest('.gc')?.dataset.col;
+    if (Number.isInteger(k)) tabPlay(TAB.colEv.slice(k).find(x => x >= 0) ?? null);
+  });
+  $('grade-dur').addEventListener('change', () => { TAB.grid[TAB.sel.col].dur = +$('grade-dur').value; gridCommit(); });
+  $('grade-add').addEventListener('click', gridAddCol);
+  $('grade-del').addEventListener('click', gridDelCol);
+  $('grade-acorde').addEventListener('click', gridInsertChord);
+  $('tab-modo-texto').addEventListener('click', () => setTabMode('texto'));
+  $('tab-modo-grade').addEventListener('click', () => setTabMode('grade'));
+}
+
 function renderTabList() {
   const tabs = store.tabs();
   $('tab-lista').replaceChildren(...(tabs.length ? tabs.map(t => {
@@ -807,33 +1050,49 @@ function renderTabList() {
   }) : [Object.assign(document.createElement('li'), { className: 'empty-item', textContent: 'Nenhuma tablatura salva.' })]));
 }
 
-function openTab(t) {
+/** Carrega uma tablatura no editor (salva, exemplo ou importada). */
+function loadTab(t) {
   tabStop();
-  TAB.editId = t.id;
+  TAB.editId = t.id ?? null;
+  TAB.a = TAB.b = TAB.cursor = -1;
   $('tab-nome').value = t.name;
   fillTabInstruments(`${t.instrument}/${t.tuning}`);
   $('tab-texto').value = t.text;
-  $('tab-bpm').value = t.bpm;
-  $('tab-unidade').value = String(t.unit);
+  if (t.bpm) $('tab-bpm').value = t.bpm;
+  if (t.unit) $('tab-unidade').value = String(t.unit);
   tabParse();
-  $('tab-texto').scrollIntoView({ block: 'nearest' });
+  if (TAB.mode === 'grade') { gridFromText(); renderTabView(); }
 }
 
-$('tab-play').addEventListener('click', () => (TAB.playing ? tabStop() : tabPlay(0)));
+function openTab(t) {
+  loadTab(t);
+  $('tab-nome').scrollIntoView({ block: 'nearest' });
+}
+
+$('tab-play').addEventListener('click', () => (TAB.playing ? tabStop() : tabPlay(TAB.mode === 'grade' && TAB.cursor >= 0 ? TAB.cursor : null)));
 $('tab-view').addEventListener('click', e => {
   const sp = e.target.closest('.tn');
-  if (sp) tabPlay(+sp.dataset.ev);
+  if (!sp) return;
+  TAB.cursor = +sp.dataset.ev;
+  tabPlay(TAB.cursor);
 });
-for (const id of ['tab-texto', 'tab-instrumento', 'tab-acordes']) $(id).addEventListener('input', () => { tabStop(); tabParse(); });
-for (const id of ['tab-bpm', 'tab-unidade']) $(id).addEventListener('change', () => { if (TAB.playing) tabPlay(Math.max(0, TAB.on)); });
-$('tab-exemplo').addEventListener('click', () => {
+$('tab-texto').addEventListener('input', () => { tabStop(); tabParse(); });
+$('tab-acordes').addEventListener('input', () => { tabStop(); tabParse(); });
+$('tab-instrumento').addEventListener('input', () => {
   tabStop();
-  TAB.editId = null;
-  $('tab-nome').value = 'Exemplo (C · G/B · Am · F)';
-  fillTabInstruments('violao/padrao');
-  $('tab-texto').value = TAB_EXAMPLE;
-  tabParse();
+  if (tabParse() && TAB.mode === 'grade') { gridFromText(); renderTabView(); }
+  else if (TAB.mode === 'grade') setTabMode('texto');
 });
+for (const id of ['tab-bpm', 'tab-unidade']) $(id).addEventListener('change', () => {
+  if (id === 'tab-unidade' && TAB.mode === 'grade') renderGrid();
+  if (TAB.playing) tabPlay(Math.max(0, TAB.on), { countIn: false });
+});
+$('tab-vel').addEventListener('input', () => { $('tab-vel-out').textContent = `${$('tab-vel').value}%`; });
+$('tab-vel').addEventListener('change', () => { if (TAB.playing) tabPlay(Math.max(0, TAB.on), { countIn: false }); });
+$('tab-a').addEventListener('click', () => setMark('a'));
+$('tab-b').addEventListener('click', () => setMark('b'));
+$('tab-ab-limpar').addEventListener('click', () => { TAB.a = TAB.b = -1; renderAB(); });
+$('tab-exemplo').addEventListener('click', () => loadTab({ name: 'Exemplo (C · G/B · Am · F)', instrument: 'violao', tuning: 'padrao', text: TAB_EXAMPLE }));
 $('tab-salvar').addEventListener('click', () => {
   if (!tabParse()) { $('tab-msg').textContent ||= 'Digite uma tablatura antes de salvar.'; return; }
   const [i, t] = tabKey();
@@ -846,7 +1105,9 @@ $('tab-salvar').addEventListener('click', () => {
   renderTabList();
 });
 fillTabInstruments();
+setupGrid();
 renderTabList();
+renderBoard(null);
 
 // ---------- Início ----------
 $('anterior').addEventListener('click', () => move(-1));
@@ -866,7 +1127,7 @@ document.addEventListener('visibilitychange', () => {
 $('proxima').addEventListener('click', () => move(1));
 document.addEventListener('keydown', e => {
   if (stageOpen()) return stageKeys(e);
-  if (e.target.closest('input, [role="tab"]')) return;
+  if (e.target.closest('input, textarea, select, [role="tab"], .grid-wrap')) return;
   if (e.key === 'ArrowLeft') move(-1);
   if (e.key === 'ArrowRight') move(1);
 });

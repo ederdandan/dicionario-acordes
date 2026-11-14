@@ -181,3 +181,38 @@ export function renderEditor(frets, instrument, tuning, { baseFret = 1, rows = 5
   });
   return svg;
 }
+
+/**
+ * Braço horizontal (tablatura): linha de cima = corda/par mais agudo; casas 0..frets.
+ * Notas de `frets` (-1 = não toca) acesas com o número da casa. leftHanded espelha (pestana à direita).
+ */
+export function renderFretboard(frets, instrument, tuning, { maxFret = 12, leftHanded = false } = {}) {
+  const n = tuning.courses.length;
+  const fw = 34, rh = 20, padL = 30, top = 10, openW = 26;
+  const W = padL + openW + maxFret * fw + 8, H = top + (n - 1) * rh + 26;
+  const fg = 'var(--dg-fg, #111)', grid = 'var(--dg-grid, #555)';
+  const X = x => (leftHanded ? W - x : x);
+  const y = c => top + (n - 1 - c) * rh;
+  const fx = f => (f === 0 ? padL + openW / 2 : padL + openW + (f - 0.5) * fw);
+  const on = frets.map((f, c) => (f >= 0 ? `${tuning.courses[c].label} casa ${f}` : null)).filter(Boolean);
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, class: 'fretboard', role: 'img',
+    'aria-label': `Braço do ${instrument.name}${on.length ? ': ' + on.join(', ') : ''}` });
+  for (const m of [3, 5, 7, 9, 12, 15, 17, 19, 21, 24].filter(m => m <= maxFret)) {
+    svg.append(el('text', { x: X(fx(m)), y: H - 4, 'text-anchor': 'middle', 'font-size': 10, fill: grid }, String(m)));
+  }
+  svg.append(el('rect', { x: Math.min(X(padL + openW - 3), X(padL + openW)), y: top - 4, width: 3, height: (n - 1) * rh + 8, fill: fg }));
+  for (let f = 1; f <= maxFret; f++) {
+    const x = X(padL + openW + f * fw);
+    svg.append(el('line', { x1: x, x2: x, y1: top - 4, y2: top + (n - 1) * rh + 4, stroke: grid, 'stroke-width': 1 }));
+  }
+  tuning.courses.forEach((c, i) => {
+    svg.append(el('line', { x1: X(padL), x2: X(padL + openW + maxFret * fw), y1: y(i), y2: y(i), stroke: grid, 'stroke-width': c.notes.length > 1 ? 2 : 1.2 }));
+    svg.append(el('text', { x: X(padL - 6), y: y(i) + 4, 'text-anchor': leftHanded ? 'start' : 'end', 'font-size': 10, fill: grid }, c.notes[0].replace(/-?\d+$/, '')));
+  });
+  frets.forEach((f, i) => {
+    if (f < 0 || f > maxFret) return;
+    svg.append(el('circle', { cx: X(fx(f)), cy: y(i), r: 8.5, fill: 'var(--accent, #c0392b)' }));
+    svg.append(el('text', { x: X(fx(f)), y: y(i) + 3.5, 'text-anchor': 'middle', 'font-size': 10, 'font-weight': 700, fill: 'var(--accent-fg, #fff)' }, String(f)));
+  });
+  return svg;
+}

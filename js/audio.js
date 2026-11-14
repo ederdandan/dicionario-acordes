@@ -216,3 +216,21 @@ export function scheduleFrets(frets, instrumentId, tuning, when, { strum = 0, ga
 export function stopAll() {
   if (ctx) active.forEach(v => release(v, ctx.currentTime));
 }
+
+/** Clique de metrônomo (contagem de entrada) no instante `when`; accent = 1º tempo, mais agudo. */
+export function scheduleClick(when, accent = false) {
+  if (!unlock()) return;
+  const t = Math.max(when, ctx.currentTime);
+  const src = ctx.createOscillator();
+  src.frequency.value = accent ? 1760 : 1175;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(accent ? 0.45 : 0.3, t + 0.002);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+  src.connect(gain).connect(master);
+  const v = { src, gain, course: -1, released: false };
+  src.onended = () => cleanup(v);
+  active.add(v);
+  src.start(t);
+  src.stop(t + 0.08);
+}

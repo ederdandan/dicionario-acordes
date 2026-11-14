@@ -148,13 +148,42 @@
         <label>Nome <input id="tab-nome" type="text" autocomplete="off" placeholder="Minha tablatura"></label>
         <label>Instrumento <select id="tab-instrumento"></select></label>
       </div>
+      <div class="tab-mode" role="group" aria-label="Modo de edição">
+        <button id="tab-modo-texto" type="button" class="btn small" aria-pressed="true">Texto</button>
+        <button id="tab-modo-grade" type="button" class="btn small" aria-pressed="false">Grade</button>
+      </div>
+      <div id="tab-edit-texto">
       <label for="tab-texto" class="hint">Cole ou digite a tablatura (linha de cima = corda mais aguda; um bloco por sistema).</label>
       <textarea id="tab-texto" class="tab-text" rows="8" spellcheck="false" autocomplete="off" placeholder="e|-------0-------0-|&#10;B|-----1---1-----1-|&#10;G|---0-------0-----|&#10;D|-----------------|&#10;A|-3---------------|&#10;E|-----------------|"></textarea>
+      </div>
+      <div id="tab-edit-grade" class="grid-editor" hidden>
+        <p class="hint">Toque numa célula e digite a casa (teclado ou números abaixo). Setas movem; Delete apaga. As anotações do texto somem na 1ª edição pela grade.</p>
+        <div id="grade" class="grid-wrap" role="grid" aria-label="Grade da tablatura (cordas × colunas)"></div>
+        <div class="grid-tools">
+          <div id="grade-teclado" class="keypad" role="group" aria-label="Casa"></div>
+          <div class="grid-row">
+            <label>Duração da coluna <select id="grade-dur"></select></label>
+            <button id="grade-add" type="button" class="btn small">+ Coluna</button>
+            <button id="grade-del" type="button" class="btn small">− Coluna</button>
+            <button id="grade-acorde" type="button" class="btn small">Inserir acorde</button>
+          </div>
+        </div>
+      </div>
       <div class="tab-controls">
         <label>BPM <input id="tab-bpm" type="number" min="40" max="240" step="1" value="90" inputmode="numeric"></label>
         <label>Cada traço <select id="tab-unidade"><option value="16">1/16 (semicolcheia)</option><option value="8">1/8 (colcheia)</option></select></label>
         <label class="check"><input id="tab-repetir" type="checkbox"> Repetir</label>
         <label class="check" title="Toca o acorde de anotações como (A) ou E7 no instrumento escolhido"><input id="tab-acordes" type="checkbox" checked> Tocar acordes das anotações</label>
+      </div>
+      <div class="tab-controls tab-study">
+        <label>Velocidade <span class="range"><input id="tab-vel" type="range" min="50" max="100" step="5" value="100"> <output id="tab-vel-out" for="tab-vel">100%</output></span></label>
+        <label class="check"><input id="tab-contagem" type="checkbox"> Contagem de entrada</label>
+        <div class="ab" role="group" aria-label="Repetição A–B">
+          <button id="tab-a" type="button" class="btn small" title="Marca o início no ponto selecionado ou tocando">A</button>
+          <button id="tab-b" type="button" class="btn small" title="Marca o fim no ponto selecionado ou tocando">B</button>
+          <button id="tab-ab-limpar" type="button" class="btn small" aria-label="Limpar A–B">✕</button>
+          <span id="tab-ab" class="hint">A–B: desligado</span>
+        </div>
       </div>
       <div class="tab-actions">
         <button id="tab-play" type="button" class="btn play-btn">▶ Tocar</button>
@@ -163,6 +192,7 @@
       </div>
       <p id="tab-msg" class="form-msg" aria-live="polite"></p>
       <div id="tab-view" class="tab-view" aria-label="Tablatura (toque num número para tocar dali)"></div>
+      <div id="tab-braco" class="tab-braco"></div>
       <h2 class="panel-title">Tablaturas salvas</h2>
       <ul id="tab-lista" class="item-list"></ul>
     </section>
