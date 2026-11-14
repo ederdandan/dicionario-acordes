@@ -5,7 +5,7 @@ const KEY = 'dicionario-acordes:v1';
 const FORMAT = 'dicionario-acordes-backup';
 const DEFAULT_PREFS = { theme: 'auto', leftHanded: false };
 
-const empty = () => ({ favorites: [], progressions: [], prefs: { ...DEFAULT_PREFS } });
+const empty = () => ({ favorites: [], progressions: [], tabs: [], prefs: { ...DEFAULT_PREFS } });
 
 function getBackend(backend) {
   if (backend) return backend;
@@ -30,6 +30,15 @@ function sanitize(raw) {
     const chords = p.chords.map(c => str(c, 40)).filter(Boolean);
     if (!chords.length) continue;
     out.progressions.push({ id: str(p.id, 60) || newId(), name: str(p.name, 80) || 'Sem nome', chords, created: Number(p.created) || 0 });
+  }
+  for (const t of Array.isArray(raw.tabs) ? raw.tabs : []) {
+    const text = str(t?.text, 20000);
+    if (!text.trim()) continue;
+    out.tabs.push({
+      id: str(t.id, 60) || newId(), name: str(t.name, 80) || 'Sem nome', text,
+      instrument: str(t.instrument, 30) || 'violao', tuning: str(t.tuning, 30) || 'padrao',
+      bpm: Math.min(240, Math.max(40, Math.round(Number(t.bpm)) || 90)), unit: t.unit === 8 ? 8 : 16, created: Number(t.created) || 0,
+    });
   }
   if (raw.prefs && typeof raw.prefs === 'object') {
     if (['auto', 'light', 'dark'].includes(raw.prefs.theme)) out.prefs.theme = raw.prefs.theme;
@@ -80,6 +89,17 @@ export function createStorage({ key = KEY, backend } = {}) {
       return prog;
     },
     removeProgression(id) { data.progressions = data.progressions.filter(p => p.id !== id); return persist(); },
+    // Tablaturas
+    tabs: () => data.tabs.slice(),
+    saveTab(t) {
+      const tab = sanitize({ tabs: [{ ...t, id: t.id || newId(), created: t.created || Date.now() }] }).tabs[0];
+      if (!tab) return null;
+      const i = data.tabs.findIndex(x => x.id === tab.id);
+      if (i >= 0) data.tabs[i] = tab; else data.tabs.push(tab);
+      persist();
+      return tab;
+    },
+    removeTab(id) { data.tabs = data.tabs.filter(t => t.id !== id); return persist(); },
     // Preferências
     prefs: () => ({ ...data.prefs }),
     setPref(k, v) { data.prefs = sanitize({ prefs: { ...data.prefs, [k]: v } }).prefs; return persist(); },
@@ -96,9 +116,10 @@ export function createStorage({ key = KEY, backend } = {}) {
       const merge = (cur, add) => [...cur.filter(c => !add.some(a => a.id === c.id)), ...add];
       data.favorites = merge(data.favorites, inc.favorites);
       data.progressions = merge(data.progressions, inc.progressions);
+      data.tabs = merge(data.tabs, inc.tabs);
       if (raw.prefs) data.prefs = inc.prefs;
       persist();
-      return { favorites: inc.favorites.length, progressions: inc.progressions.length };
+      return { favorites: inc.favorites.length, progressions: inc.progressions.length, tabs: inc.tabs.length };
     },
     clear() { data = empty(); try { be?.removeItem(key); } catch { /* ignora */ } },
   };

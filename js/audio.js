@@ -191,3 +191,26 @@ export function play(voicing, instrumentId, tuning, { mode = 'dedilhar', course 
   if (active.size > MAX_VOICES) [...active].slice(0, active.size - MAX_VOICES).forEach(v => release(v, ctx.currentTime));
   return voices.length;
 }
+
+// ---------- Agendamento (tablatura) ----------
+/** Relógio do áudio em segundos (null se ainda não há contexto). */
+export const audioNow = () => (ctx ? ctx.currentTime : null);
+/** Atraso entre agendar e ouvir (fones Bluetooth etc.), para sincronizar o destaque. */
+export const audioLatency = () => (ctx ? (ctx.outputLatency || 0) + (ctx.baseLatency || 0) : 0);
+
+/** Agenda as casas (-1 = não toca) no instante `when` do relógio do áudio. Re-tocar uma corda abafa a anterior. */
+export function scheduleFrets(frets, instrumentId, tuning, when) {
+  if (!unlock()) return 0;
+  const voices = voicesFor(frets, instrumentId, tuning);
+  const t = Math.max(when, ctx.currentTime);
+  for (const c of new Set(voices.map(v => v.course))) for (const old of byCourse.get(c) || []) release(old, t);
+  const level = (TIMBRES[instrumentId] || TIMBRES.violao).gain * Math.min(1, Math.sqrt(6 / Math.max(voices.length, 1)));
+  for (const v of voices) startVoice(v, instrumentId, t + v.offset, level);
+  if (active.size > MAX_VOICES) [...active].slice(0, active.size - MAX_VOICES).forEach(v => release(v, ctx.currentTime));
+  return voices.length;
+}
+
+/** Abafa tudo o que soa ou está agendado. */
+export function stopAll() {
+  if (ctx) active.forEach(v => release(v, ctx.currentTime));
+}

@@ -19,6 +19,9 @@
 | 3 | Sintetizador de áudio | ✅ concluída (2026-11-13) | 62/62 testes (Chrome headless via DevTools Protocol). Karplus-Strong calculado em JS (`ksSamples`, função pura) e tocado como `AudioBuffer` (cache LRU de 160 buffers) — sem laço de realimentação no grafo; cada nota = `BufferSource` + `Gain`, desconectados no `ended`. Re-tocar uma corda abafa a anterior; teto de 48 vozes. Desafinação da 2ª corda do par é fixa por par (±3 cents, determinística → cacheável). Ganho normalizado por √(6/nº de vozes); master = compressor + soft-clip tanh (pico ≤ 0,99 no teste de estresse). `renderDiagram` ganhou a opção `onString(i)`: áreas clicáveis/focáveis (Enter/Espaço) por corda tocada, e o SVG passa a `role="group"`. Vazamento verificado com `OfflineAudioContext` (headless não tem saída de áudio em tempo real). **Correção (2026-11-14):** o áudio era desbloqueado no `pointerdown`, que em tela de toque não conta como gesto (o contexto nascia suspenso); agora usa `touchend`/`click`/`keydown`, retoma também o estado `interrupted` do iOS e põe a sessão em `playback` (`navigator.audioSession`, ou `<audio>` silencioso em iOS antigos) para tocar mesmo com a chave de silencioso. Verificado com um analisador na saída: pico ≈ 0,93 já no 1º toque. |
 | 4 | PWA (manifest, service worker, instalação) | ✅ concluída (2026-11-14) | Verificado em Chrome headless via DevTools Protocol, servido de `/dicionario-acordes/`: `Page.getInstallabilityErrors` vazio (o Lighthouse atual não tem mais a categoria PWA); offline real (servidor desligado) recarrega, busca, gera e toca áudio; trocar `CACHE_NAME` mostra o aviso e "Atualizar" troca o SW e apaga o cache antigo. Ícones gerados por `tools/gen-icons.mjs` (PNG em Node puro, sem dependências). SW: `tests.html` sempre da rede; páginas fora do pré-cache entram no cache na 1ª visita. Instalar: botão via `beforeinstallprompt`; no iOS abre um `<dialog>` com as instruções. |
 | 5 | Extras: favoritos, progressões, canhoto, tema, URL, reverso | ✅ concluída (2026-11-14) | 100/100 testes em `tests.html` + 20/20 verificações E2E. Tudo num único item do localStorage (`dicionario-acordes:v1`); o favorito guarda as casas (posição reencontrada pelas casas, índice como reserva). Importar **mescla** por id (não apaga o que já existe). Rota: `#/instrumento[/afinação]/acorde/posição`, afinação omitida quando é a padrão (`#/violao/C7M/2`, `#/viola/rioAbaixo/G%2FB/2`); estado vindo da URL usa `replaceState`, mudanças do usuário usam `pushState`. Tema: botão alterna automático → claro → escuro. Reverso: `identifyChord(frets, inst, tun)` em `voicings.js` usa `checkShape` (ganhou a opção `span: false`) e a regra de baixo do instrumento; ordena por tônica no baixo, depois menos notas omitidas, depois ordem de `CHORD_TYPES`; teste extra: reconhece a 1ª posição de todos os tipos × 12 tônicas em todos os instrumentos. `diagram.js` ganhou `renderEditor` (braço clicável). **Ajustes de UX para celular (2026-11-14):** abaixo de 860 px, barra de abas inferior (Acordes · Repertório · Identificar) e diagrama antes do seletor, com rolagem de volta ao diagrama ao escolher um tipo; deslizar no diagrama troca a posição; **modo palco** em tela cheia (próximo acorde, botões grandes, deslizar, pedaleira Bluetooth via setas/PageUp/PageDown, tela sempre acesa com Wake Lock, o “voltar” do Android fecha o palco sem desfazer o acorde); alvos de toque ≥ 44 px em telas de toque; abas de tipo e miniaturas em faixas horizontais; áreas seguras do iPhone; aviso rápido ao favoritar/salvar. Desktop inalterado. |
+| 6a | Tablatura em texto: play com BPM, destaque sincronizado, salvar | 🟡 implementada (2026-11-14) — validação manual pendente | Agendador com lookahead no relógio do AudioContext; destaque compensa latência; passo = 1/8 ou 1/16; tabs no backup |
+| 6b | Editor de tablatura em grade, braço sincronizado, modo estudo | ⬜ pendente | |
+| 6c | Importar MusicXML | ⬜ pendente | |
 
 ---
 
@@ -45,7 +48,8 @@
 │   ├── curated.js        # Pequena base de shapes tradicionais (overrides)
 │   ├── diagram.js        # Renderização SVG
 │   ├── audio.js          # (Fase 3) Sintetizador
-│   └── storage.js        # (Fase 5) localStorage, import/export
+│   ├── storage.js        # (Fase 5) localStorage, import/export
+│   └── tab.js            # (Fase 6) Parser de tablatura (funções puras)
 ├── icons/                # (Fase 4) icon-192.png, icon-512.png, maskable-512.png, apple-touch-icon.png
 ├── tools/gen-icons.mjs   # (Fase 4) gera os ícones PNG (node tools/gen-icons.mjs)
 ├── manifest.json         # (Fase 4)
@@ -213,3 +217,28 @@ A nota de cada corda do par está listada abaixo. Nos pares 5º, 4º e 3º, as c
 - Com o modo canhoto ativo, os textos não aparecem espelhados.
 - Abrir uma URL com hash restaura exatamente o estado.
 - O reverso identifica corretamente os shapes listados nos critérios das Fases 1 e 2.
+
+---
+
+## Fase 6 — Tablatura
+### 6a — Tablatura em texto
+**Arquivos:** `js/tab.js` (novo, puro), `js/audio.js` (agendamento), `js/storage.js`, `js/app.js`, `index.html`, `css/app.css`, `sw.js`, `tests.html`.
+- **Entrada:** texto ASCII colado/digitado, um bloco por sistema (linhas separadas por linha em branco). Linha de cima = corda mais aguda. Rótulo opcional antes do 1º `|` (`e|`, `B|`). O bloco deve ter tantas linhas quanto cordas/pares do instrumento escolhido; senão, erro claro.
+- **Tempo:** cada caractere (exceto `|`) = 1 passo; o passo vale 1/8 ou 1/16 de tempo (escolha do usuário) no BPM informado (40–240). Números de 2 dígitos (`10`, `12`) são uma nota só. `x` = nota abafada (não soa). Técnicas (`h p b / \ ~`) contam como tempo, sem efeito sonoro.
+- **Contrato:** `parseTab(texto, nCordas) → { blocks: [{ lines: [string], notes: [{ course, fret, line, col, len, ev }] }], events: [{ step, block, frets: number[] }], steps } | { error }`.
+- **Reprodução:** o instrumento e a afinação são escolhidos no módulo. O agendador olha uma janela à frente no relógio do Web Audio (sem temporizador acumulando atraso). Parar abafa tudo. Opção de repetir.
+- **Destaque:** a cada quadro, compara o relógio do áudio (descontando `outputLatency`) com o horário de cada evento: a nota que soa fica acesa, as já tocadas ficam marcadas e a rolagem acompanha. Tocar num número começa dali.
+- **Salvar:** tablaturas (nome, texto, instrumento, afinação, BPM, unidade) no `storage.js`, entrando no backup JSON.
+- **Celular:** nova aba "Tablatura" na barra inferior; tablatura com rolagem horizontal própria.
+
+#### ✅ Critérios de aceite
+- `parseTab` lê o exemplo de 6 linhas com `|` e números de 2 dígitos; rejeita bloco com nº de linhas errado.
+- Tocar o exemplo produz som e o destaque passa por todas as notas em ordem; ao parar, nenhuma voz fica ativa.
+- Tablaturas salvas sobrevivem a recarregar e ao ciclo exportar → limpar → importar.
+
+### 6b — Editor em grade e estudo
+Grade de toque (cordas × colunas, teclado numérico de casas, duração por coluna, inserir acorde do dicionário), braço do instrumento sincronizado com a reprodução, velocidade de estudo (50–100%), repetição A–B e contagem de entrada.
+
+### 6c — Importar MusicXML
+Ler partes com `<technical><string>/<fret>` e durações, convertendo para o modelo da 6a/6b.
+

@@ -142,11 +142,35 @@
       </div>
       <ol id="reverso-resultados" class="reverse-results" aria-live="polite"></ol>
     </section>
+    <section class="panel tabmod" data-view="tablatura" aria-label="Tablatura">
+      <h2 class="panel-title">Tablatura</h2>
+      <div class="tab-fields">
+        <label>Nome <input id="tab-nome" type="text" autocomplete="off" placeholder="Minha tablatura"></label>
+        <label>Instrumento <select id="tab-instrumento"></select></label>
+      </div>
+      <label for="tab-texto" class="hint">Cole ou digite a tablatura (linha de cima = corda mais aguda; um bloco por sistema).</label>
+      <textarea id="tab-texto" class="tab-text" rows="8" spellcheck="false" autocomplete="off" placeholder="e|-------0-------0-|&#10;B|-----1---1-----1-|&#10;G|---0-------0-----|&#10;D|-----------------|&#10;A|-3---------------|&#10;E|-----------------|"></textarea>
+      <div class="tab-controls">
+        <label>BPM <input id="tab-bpm" type="number" min="40" max="240" step="1" value="90" inputmode="numeric"></label>
+        <label>Cada traço <select id="tab-unidade"><option value="16">1/16 (semicolcheia)</option><option value="8">1/8 (colcheia)</option></select></label>
+        <label class="check"><input id="tab-repetir" type="checkbox"> Repetir</label>
+      </div>
+      <div class="tab-actions">
+        <button id="tab-play" type="button" class="btn play-btn">▶ Tocar</button>
+        <button id="tab-salvar" type="button" class="btn">Salvar</button>
+        <button id="tab-exemplo" type="button" class="btn">Exemplo</button>
+      </div>
+      <p id="tab-msg" class="form-msg" aria-live="polite"></p>
+      <div id="tab-view" class="tab-view" aria-label="Tablatura (toque num número para tocar dali)"></div>
+      <h2 class="panel-title">Tablaturas salvas</h2>
+      <ul id="tab-lista" class="item-list"></ul>
+    </section>
   </main>
 
   <nav class="bottom-nav" aria-label="Seções">
     <button type="button" data-go="acordes" aria-current="page"><span aria-hidden="true">♪</span>Acordes</button>
     <button type="button" data-go="repertorio"><span aria-hidden="true">★</span>Repertório</button>
+    <button type="button" data-go="tablatura"><span aria-hidden="true">≡</span>Tablatura</button>
     <button type="button" data-go="identificar"><span aria-hidden="true">?</span>Identificar</button>
   </nav>
 

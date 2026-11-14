@@ -4,7 +4,8 @@ import { parseChord, suggest } from './parser.js';
 import { INSTRUMENTS, DEFAULT_INSTRUMENT, DEFAULT_TUNING } from './instruments.js';
 import { getVoicings, identifyChord } from './voicings.js';
 import { renderDiagram, renderEditor } from './diagram.js';
-import { play, unlock } from './audio.js';
+import { play, unlock, scheduleFrets, stopAll, audioNow, audioLatency } from './audio.js';
+import { parseTab, stepSeconds, TAB_EXAMPLE } from './tab.js';
 import { createStorage, favoriteId, formatRoute, parseRoute, splitProgression } from './storage.js';
 
 const $ = id => document.getElementById(id);
@@ -431,17 +432,17 @@ $('importar-arquivo').addEventListener('change', async e => {
   if (!file) return;
   try {
     const n = store.importJSON(await file.text());
-    $('backup-msg').textContent = `Importados: ${n.favorites} favorito(s) e ${n.progressions} progressão(ões).`;
+    $('backup-msg').textContent = `Importados: ${n.favorites} favorito(s), ${n.progressions} progressão(ões) e ${n.tabs} tablatura(s).`;
   } catch (err) {
     $('backup-msg').textContent = err.message;
   }
-  applyPrefs(); renderLibrary(); renderViewer(); renderReverse();
+  applyPrefs(); renderLibrary(); renderViewer(); renderReverse(); renderTabList();
 });
 $('apagar-tudo').addEventListener('click', () => {
   if (!confirm('Apagar todos os favoritos, progressões e preferências? Exporte um backup antes, se quiser guardá-los.')) return;
   store.clear();
   state.rehearsal = null;
-  applyPrefs(); renderLibrary(); renderViewer(); renderRehearsal(); renderReverse();
+  applyPrefs(); renderLibrary(); renderViewer(); renderRehearsal(); renderReverse(); renderTabList();
   $('backup-msg').textContent = 'Dados apagados.';
 });
 
@@ -670,6 +671,175 @@ window.addEventListener('popstate', () => {
   if (leaving) closeStage(true);
   if (leaving || ignoreHash) { ignoreHash = false; syncHash(); }
 });
+
+// ---------- Tablatura (Fase 6a) ----------
+// Agendador com antecedência no relógio do Web Audio + destaque por quadro (requestAnimationFrame).
+const TAB = { parsed: null, playing: false, timer: 0, raf: 0, start: 0, next: 0, dt: 0.1, queue: [], spans: [], on: -1, editId: null };
+const tabKey = () => $('tab-instrumento').value.split('/');
+
+function fillTabInstruments(value = `${state.instrument}/${state.tuning}`) {
+  $('tab-instrumento').replaceChildren(...Object.values(INSTRUMENTS).flatMap(i => Object.entries(i.tunings).map(([tid, t]) =>
+    Object.assign(document.createElement('option'), { value: `${i.id}/${tid}`, textContent: `${i.name}${Object.keys(i.tunings).length > 1 ? ' · ' + (t.short || t.name) : ''}` }))));
+  $('tab-instrumento').value = value;
+  if (!$('tab-instrumento').value) $('tab-instrumento').selectedIndex = 0;
+}
+
+function tabParse() {
+  const [i, t] = tabKey();
+  const text = $('tab-texto').value;
+  const r = text.trim() ? parseTab(text, INSTRUMENTS[i].tunings[t].courses.length) : { error: '' };
+  $('tab-msg').textContent = r.error || '';
+  TAB.parsed = r.error === undefined ? r : null;
+  renderTabView();
+  return TAB.parsed;
+}
+
+function renderTabView() {
+  const p = TAB.parsed;
+  TAB.spans = [];
+  TAB.on = -1;
+  if (!p) return $('tab-view').replaceChildren();
+  const w = Math.max(0, ...p.blocks.flatMap(b => b.labels.map(l => l.length)));
+  $('tab-view').replaceChildren(...p.blocks.map(b => {
+    const pre = Object.assign(document.createElement('pre'), { className: 'tab-block' });
+    b.lines.forEach((line, li) => {
+      pre.append((b.labels[li] || '').padEnd(w) + '|');
+      let pos = 0;
+      for (const nt of b.notes.filter(x => x.line === li).sort((x, y) => x.col - y.col)) {
+        pre.append(line.slice(pos, nt.col));
+        const sp = Object.assign(document.createElement('span'), { className: 'tn', textContent: line.substr(nt.col, nt.len) });
+        sp.dataset.ev = nt.ev;
+        (TAB.spans[nt.ev] ||= []).push(sp);
+        pre.append(sp);
+        pos = nt.col + nt.len;
+      }
+      pre.append(line.slice(pos) + (li < b.lines.length - 1 ? '\n' : ''));
+    });
+    return pre;
+  }));
+}
+
+function tabHighlight(ev) {
+  if (ev < TAB.on) { TAB.spans.flat().forEach(s => s.classList.remove('on', 'done')); TAB.on = -1; } // recomeço (repetir)
+  (TAB.spans[TAB.on] || []).forEach(s => { s.classList.remove('on'); s.classList.add('done'); });
+  const cur = TAB.spans[ev] || [];
+  cur.forEach(s => { s.classList.remove('done'); s.classList.add('on'); });
+  const sp = cur[0], pre = sp?.parentElement;
+  if (pre) {
+    pre.scrollLeft = sp.offsetLeft - pre.clientWidth / 2;
+    if (TAB.parsed.events[TAB.on]?.block !== TAB.parsed.events[ev].block) pre.scrollIntoView({ block: 'nearest' });
+  }
+  TAB.on = ev;
+}
+
+function tabSchedule() {
+  const p = TAB.parsed, ev = p.events;
+  const ahead = audioNow() + (document.hidden ? 1.5 : 0.3); // em segundo plano o setInterval é atrasado
+  for (;;) {
+    if (TAB.next >= ev.length) {
+      const end = TAB.start + p.steps * TAB.dt;
+      if (!$('tab-repetir').checked) { if (audioNow() > end && !TAB.queue.length) tabStop(false); return; }
+      if (end > ahead) return;
+      TAB.start = end; TAB.next = 0; // repete do início, emendado no tempo
+    }
+    const e = ev[TAB.next], when = TAB.start + e.step * TAB.dt;
+    if (when > ahead) return;
+    scheduleFrets(e.frets, TAB.inst, TAB.tun, when);
+    TAB.queue.push({ time: when, ev: TAB.next++ });
+  }
+}
+
+function tabDraw() {
+  if (!TAB.playing) return;
+  const now = audioNow() - audioLatency(); // o destaque acompanha o que se OUVE
+  let cur = -1;
+  while (TAB.queue.length && TAB.queue[0].time <= now) cur = TAB.queue.shift().ev;
+  if (cur >= 0) tabHighlight(cur);
+  TAB.raf = requestAnimationFrame(tabDraw);
+}
+
+function tabPlay(from = 0) {
+  tabStop();
+  const p = tabParse();
+  if (!p || !unlock()) return;
+  const [i, t] = tabKey();
+  Object.assign(TAB, {
+    inst: i, tun: INSTRUMENTS[i].tunings[t], dt: stepSeconds(+$('tab-bpm').value, +$('tab-unidade').value),
+    next: from, queue: [], playing: true,
+  });
+  TAB.start = audioNow() + 0.12 - p.events[from].step * TAB.dt;
+  $('tab-play').textContent = '■ Parar';
+  tabSchedule();
+  TAB.timer = setInterval(tabSchedule, 50);
+  TAB.raf = requestAnimationFrame(tabDraw);
+}
+
+function tabStop(silence = true) {
+  clearInterval(TAB.timer);
+  cancelAnimationFrame(TAB.raf);
+  if (silence && TAB.playing) stopAll();
+  TAB.playing = false;
+  TAB.queue = [];
+  TAB.spans.flat().forEach(s => s.classList.remove('on', 'done'));
+  TAB.on = -1;
+  $('tab-play').textContent = '▶ Tocar';
+}
+
+function renderTabList() {
+  const tabs = store.tabs();
+  $('tab-lista').replaceChildren(...(tabs.length ? tabs.map(t => {
+    const li = document.createElement('li');
+    const open = button('', 'btn open', () => openTab(t), { title: `Abrir ${t.name}` });
+    open.append(`${t.name} `, Object.assign(document.createElement('small'), { textContent: `${INSTRUMENTS[t.instrument]?.name || t.instrument} · ${t.bpm} BPM` }));
+    li.append(open, button('✕', 'btn small', () => {
+      store.removeTab(t.id);
+      if (TAB.editId === t.id) TAB.editId = null;
+      renderTabList();
+    }, { 'aria-label': `Apagar a tablatura ${t.name}` }));
+    return li;
+  }) : [Object.assign(document.createElement('li'), { className: 'empty-item', textContent: 'Nenhuma tablatura salva.' })]));
+}
+
+function openTab(t) {
+  tabStop();
+  TAB.editId = t.id;
+  $('tab-nome').value = t.name;
+  fillTabInstruments(`${t.instrument}/${t.tuning}`);
+  $('tab-texto').value = t.text;
+  $('tab-bpm').value = t.bpm;
+  $('tab-unidade').value = String(t.unit);
+  tabParse();
+  $('tab-texto').scrollIntoView({ block: 'nearest' });
+}
+
+$('tab-play').addEventListener('click', () => (TAB.playing ? tabStop() : tabPlay(0)));
+$('tab-view').addEventListener('click', e => {
+  const sp = e.target.closest('.tn');
+  if (sp) tabPlay(+sp.dataset.ev);
+});
+for (const id of ['tab-texto', 'tab-instrumento']) $(id).addEventListener('input', () => { tabStop(); tabParse(); });
+for (const id of ['tab-bpm', 'tab-unidade']) $(id).addEventListener('change', () => { if (TAB.playing) tabPlay(Math.max(0, TAB.on)); });
+$('tab-exemplo').addEventListener('click', () => {
+  tabStop();
+  TAB.editId = null;
+  $('tab-nome').value = 'Exemplo (C · G/B · Am · F)';
+  fillTabInstruments('violao/padrao');
+  $('tab-texto').value = TAB_EXAMPLE;
+  tabParse();
+});
+$('tab-salvar').addEventListener('click', () => {
+  if (!tabParse()) { $('tab-msg').textContent ||= 'Digite uma tablatura antes de salvar.'; return; }
+  const [i, t] = tabKey();
+  const saved = store.saveTab({
+    id: TAB.editId, name: $('tab-nome').value.trim() || 'Sem nome', text: $('tab-texto').value,
+    instrument: i, tuning: t, bpm: +$('tab-bpm').value, unit: +$('tab-unidade').value,
+  });
+  TAB.editId = saved?.id ?? null;
+  notify(saved ? 'Tablatura salva' : 'Não foi possível salvar');
+  renderTabList();
+});
+fillTabInstruments();
+renderTabList();
 
 // ---------- Início ----------
 $('anterior').addEventListener('click', () => move(-1));

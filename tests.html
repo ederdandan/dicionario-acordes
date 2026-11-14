@@ -14,7 +14,7 @@
 </head>
 <body>
 <main>
-  <h1>Testes dos critérios de aceite — Fases 1 a 5</h1>
+  <h1>Testes dos critérios de aceite — Fases 1 a 6a</h1>
   <p id="resumo">Rodando…</p>
   <ol id="resultados"></ol>
   <h2>Validação do <code>curated.js</code></h2>
@@ -25,6 +25,7 @@ import { parseChord } from './js/parser.js';
 import { chordNotes, CHORD_TYPES, ROOT_GRID, noteToMidi } from './js/theory.js';
 import { getVoicings, checkShape, curatedFor, curatedReport, identifyChord } from './js/voicings.js';
 import { createStorage, formatRoute, parseRoute, splitProgression } from './js/storage.js';
+import { parseTab, stepSeconds, TAB_EXAMPLE } from './js/tab.js';
 import { INSTRUMENTS } from './js/instruments.js';
 import { renderDiagram } from './js/diagram.js';
 import { play, setContext, activeVoices, voicesFor, ksSamples } from './js/audio.js';
@@ -334,6 +335,40 @@ const firstPc = (v, cs) => { const k = v.frets.findIndex(f => f >= 0); return (c
     if (v0 && !v0.label.includes('sem tônica') && !identifyChord(v0.frets, i, t, { max: 99 }).some(x => x.symbol === c.symbol)) miss.push(`${i}/${t} ${c.symbol} ${fmt(v0)}`);
   }
   report('Reverso reconhece a 1ª posição de todos os tipos × 12 tônicas em todos os instrumentos', !miss.length, miss.slice(0, 8).join('; ') + (miss.length > 8 ? ` … (+${miss.length - 8})` : ''));
+}
+
+// ---------- Fase 6a: Tablatura ----------
+{
+  const ex = parseTab(TAB_EXAMPLE, 6);
+  report('parseTab: exemplo de 2 blocos × 6 linhas com barras', !ex.error && ex.blocks.length === 2 && ex.events.length === 26 && ex.events[0].frets.join() === '-1,3,-1,-1,-1,-1', ex.error || `${ex.events.length} eventos, ${ex.steps} passos`);
+  const steps = ex.events.map(e => e.step);
+  report('parseTab: eventos em ordem crescente de tempo', steps.every((x, i) => !i || x > steps[i - 1]));
+  const two = parseTab('e|--10--12--|
+B|-----------|
+G|-----------|
+D|-----------|
+A|-----------|
+E|-----------|', 6);
+  report('parseTab: "10" e "12" são uma nota só', two.events.length === 2 && two.events[0].frets[5] === 10 && two.events[1].frets[5] === 12, JSON.stringify(two.events));
+  report('parseTab: rejeita bloco com nº de linhas errado', !!parseTab('e|---0---|
+B|---1---|', 6).error);
+  const uk = parseTab('A|--0--|
+E|--0--|
+C|--0--|
+G|--2--|', 4);
+  report('parseTab: ukulele (4 linhas), linha de cima = corda mais aguda', uk.events[0]?.frets.join() === '2,0,0,0', JSON.stringify(uk.events));
+  report('stepSeconds: 120 BPM em 1/16 = 0,125 s; limita BPM a 40–240', stepSeconds(120, 16) === 0.125 && stepSeconds(999, 8) === stepSeconds(240, 8));
+  const KEY = 'dicionario-acordes:teste-tab';
+  localStorage.removeItem(KEY);
+  const a = createStorage({ key: KEY });
+  a.saveTab({ name: 'Ex', text: TAB_EXAMPLE, instrument: 'violao', tuning: 'padrao', bpm: 100, unit: 8 });
+  const bk = createStorage({ key: KEY }).exportJSON();
+  a.clear();
+  const b = createStorage({ key: KEY });
+  b.importJSON(bk);
+  const t = createStorage({ key: KEY }).tabs()[0];
+  report('Tablatura sobrevive a recarregar e a exportar → limpar → importar', t?.text === TAB_EXAMPLE && t.bpm === 100 && t.unit === 8);
+  localStorage.removeItem(KEY);
 }
 
 // Saída na tela

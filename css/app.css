@@ -60,9 +60,9 @@ body {
 @media (min-width: 860px) {
   .topbar { flex-direction: row; align-items: center; justify-content: space-between; }
   .search { width: 420px; }
-  .layout { grid-template-columns: 320px 1fr; grid-template-areas: "picker viewer" "analysis viewer" "library reverse"; align-items: start; }
+  .layout { grid-template-columns: 320px 1fr; grid-template-areas: "picker viewer" "analysis viewer" "library reverse" "tabmod tabmod"; align-items: start; }
   .picker { grid-area: picker; } .viewer { grid-area: viewer; } .analysis { grid-area: analysis; }
-  .library { grid-area: library; } .reverse { grid-area: reverse; }
+  .library { grid-area: library; } .reverse { grid-area: reverse; } .tabmod { grid-area: tabmod; }
   .brand-row { flex: 1; }
 }
 
@@ -202,10 +202,11 @@ body {
   .viewer { order: 1; } .picker { order: 2; } .analysis { order: 3; }
   body[data-view="acordes"] .panel:not([data-view="acordes"]),
   body[data-view="repertorio"] .panel:not([data-view="repertorio"]),
-  body[data-view="identificar"] .panel:not([data-view="identificar"]) { display: none; }
+  body[data-view="identificar"] .panel:not([data-view="identificar"]),
+  body[data-view="tablatura"] .panel:not([data-view="tablatura"]) { display: none; }
 
   .bottom-nav {
-    display: grid; grid-template-columns: repeat(3, 1fr); position: fixed; z-index: 40; left: 0; right: 0; bottom: 0;
+    display: grid; grid-template-columns: repeat(4, 1fr); position: fixed; z-index: 40; left: 0; right: 0; bottom: 0;
     background: var(--surface); border-top: 1px solid var(--border); padding: 4px max(8px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(8px, env(safe-area-inset-left));
     box-shadow: 0 -4px 16px rgb(0 0 0 / .06);
   }
@@ -263,3 +264,24 @@ body {
   .stage-next { grid-column: 2; }
   .stage-nav { grid-column: 2; }
 }
+
+/* ===================== Tablatura ===================== */
+.tab-fields, .tab-controls { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 8px; }
+.tab-fields label, .tab-controls label { display: flex; flex-direction: column; gap: 2px; font-size: .8rem; color: var(--muted); flex: 1 1 140px; }
+.tab-controls label.check { flex-direction: row; align-items: center; gap: 6px; flex: 0 0 auto; font-size: .95rem; color: var(--fg); }
+.tab-fields input, .tab-fields select, .tab-controls input, .tab-controls select, .tab-text {
+  font: inherit; font-size: 1rem; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; min-height: 40px; min-width: 0;
+}
+.check input { width: 20px; height: 20px; accent-color: var(--accent); }
+.tab-text { width: 100%; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .9rem; white-space: pre; overflow-x: auto; resize: vertical; margin-bottom: 8px; }
+.tab-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.tab-actions .btn { flex: 1 1 auto; }
+.tab-view { margin: 4px 0 14px; display: grid; gap: 10px; }
+.tab-view:empty { display: none; }
+.tab-block {
+  position: relative; margin: 0; padding: 8px 10px; overflow-x: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  font: 15px/1.5 ui-monospace, Menlo, Consolas, monospace; scroll-behavior: auto;
+}
+.tn { cursor: pointer; border-radius: 4px; font-weight: 700; color: var(--fg); padding: 0 1px; margin: 0 -1px; }
+.tn.done { color: var(--muted); font-weight: 400; }
+.tn.on { background: var(--accent); color: var(--accent-fg); }
