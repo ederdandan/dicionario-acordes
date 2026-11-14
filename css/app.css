@@ -285,3 +285,5 @@ body {
 .tn { cursor: pointer; border-radius: 4px; font-weight: 700; color: var(--fg); padding: 0 1px; margin: 0 -1px; }
 .tn.done { color: var(--muted); font-weight: 400; }
 .tn.on { background: var(--accent); color: var(--accent-fg); }
+.tn.tc { color: var(--accent); font-style: italic; }
+.tn.tc.on { color: var(--accent-fg); }

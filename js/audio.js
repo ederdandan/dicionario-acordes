@@ -199,13 +199,15 @@ export const audioNow = () => (ctx ? ctx.currentTime : null);
 export const audioLatency = () => (ctx ? (ctx.outputLatency || 0) + (ctx.baseLatency || 0) : 0);
 
 /** Agenda as casas (-1 = não toca) no instante `when` do relógio do áudio. Re-tocar uma corda abafa a anterior. */
-export function scheduleFrets(frets, instrumentId, tuning, when) {
+/** strum = intervalo entre cordas (grave → aguda) em s; gain multiplica o volume (acorde de fundo). */
+export function scheduleFrets(frets, instrumentId, tuning, when, { strum = 0, gain = 1 } = {}) {
   if (!unlock()) return 0;
   const voices = voicesFor(frets, instrumentId, tuning);
   const t = Math.max(when, ctx.currentTime);
   for (const c of new Set(voices.map(v => v.course))) for (const old of byCourse.get(c) || []) release(old, t);
-  const level = (TIMBRES[instrumentId] || TIMBRES.violao).gain * Math.min(1, Math.sqrt(6 / Math.max(voices.length, 1)));
-  for (const v of voices) startVoice(v, instrumentId, t + v.offset, level);
+  const level = gain * (TIMBRES[instrumentId] || TIMBRES.violao).gain * Math.min(1, Math.sqrt(6 / Math.max(voices.length, 1)));
+  const order = [...new Set(voices.map(v => v.course))].sort((a, b) => a - b);
+  for (const v of voices) startVoice(v, instrumentId, t + order.indexOf(v.course) * strum + v.offset, level);
   if (active.size > MAX_VOICES) [...active].slice(0, active.size - MAX_VOICES).forEach(v => release(v, ctx.currentTime));
   return voices.length;
 }

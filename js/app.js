@@ -687,8 +687,15 @@ function fillTabInstruments(value = `${state.instrument}/${state.tuning}`) {
 function tabParse() {
   const [i, t] = tabKey();
   const text = $('tab-texto').value;
-  const r = text.trim() ? parseTab(text, INSTRUMENTS[i].tunings[t].courses.length) : { error: '' };
-  $('tab-msg').textContent = r.error || (r.ignored?.length ? `Anotações ignoradas: ${r.ignored.join(', ')}` : '');
+  const r = text.trim() ? parseTab(text, INSTRUMENTS[i].tunings[t].courses.length, { isChord: s => !!parseChord(s) }) : { error: '' };
+  const chords = [...new Set((r.events || []).filter(e => e.chord).map(e => e.chord))];
+  const play = $('tab-acordes').checked;
+  // Acorde da anotação: 1ª posição gerada para o instrumento/afinação escolhidos
+  for (const e of r.events || []) if (e.chord) e.frets = (play && getVoicings(parseChord(e.chord), i, t, { max: 1 })[0]?.frets) || e.frets;
+  $('tab-msg').textContent = r.error || [
+    chords.length ? `Acordes${play ? '' : ' (sem som)'}: ${chords.join(', ')}` : '',
+    r.ignored?.length ? `Anotações ignoradas: ${r.ignored.join(', ')}` : '',
+  ].filter(Boolean).join(' · ');
   TAB.parsed = r.error === undefined ? r : null;
   renderTabView();
   return TAB.parsed;
@@ -705,9 +712,9 @@ function renderTabView() {
     b.lines.forEach((line, li) => {
       pre.append((b.labels[li] || '').padEnd(w) + '|');
       let pos = 0;
-      for (const nt of b.notes.filter(x => x.line === li).sort((x, y) => x.col - y.col)) {
+      for (const nt of [...b.notes, ...b.chords].filter(x => x.line === li).sort((x, y) => x.col - y.col)) {
         pre.append(line.slice(pos, nt.col));
-        const sp = Object.assign(document.createElement('span'), { className: 'tn', textContent: line.substr(nt.col, nt.len) });
+        const sp = Object.assign(document.createElement('span'), { className: nt.text ? 'tn tc' : 'tn', textContent: line.substr(nt.col, nt.len) });
         sp.dataset.ev = nt.ev;
         (TAB.spans[nt.ev] ||= []).push(sp);
         pre.append(sp);
@@ -744,7 +751,7 @@ function tabSchedule() {
     }
     const e = ev[TAB.next], when = TAB.start + e.step * TAB.dt;
     if (when > ahead) return;
-    scheduleFrets(e.frets, TAB.inst, TAB.tun, when);
+    scheduleFrets(e.frets, TAB.inst, TAB.tun, when, e.chord ? { strum: 0.018, gain: 0.6 } : undefined);
     TAB.queue.push({ time: when, ev: TAB.next++ });
   }
 }
@@ -817,7 +824,7 @@ $('tab-view').addEventListener('click', e => {
   const sp = e.target.closest('.tn');
   if (sp) tabPlay(+sp.dataset.ev);
 });
-for (const id of ['tab-texto', 'tab-instrumento']) $(id).addEventListener('input', () => { tabStop(); tabParse(); });
+for (const id of ['tab-texto', 'tab-instrumento', 'tab-acordes']) $(id).addEventListener('input', () => { tabStop(); tabParse(); });
 for (const id of ['tab-bpm', 'tab-unidade']) $(id).addEventListener('change', () => { if (TAB.playing) tabPlay(Math.max(0, TAB.on)); });
 $('tab-exemplo').addEventListener('click', () => {
   tabStop();

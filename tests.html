@@ -358,6 +358,12 @@ G#|-5-----------|
  E|--------A--E7|
  B|-------------|`, 5);
   report('parseTab: ignora anotações ((E), A, E7) e marcador [1] sem desalinhar', !ann.error && ann.events.length === 3 && ann.ignored.join() === 'E,A,E7', JSON.stringify(ann));
+  const ch = parseTab(` E|--5-----4----|
+ B|----(E)------|
+G#|-5-----------|
+ E|--------A--E7|
+ B|---------PM--|`, 5, { isChord: x => /^[A-G]/.test(x) });
+  report('parseTab: anotação de acorde vira evento no passo da coluna', ch.events.filter(e => e.chord).map(e => `${e.chord}@${e.step}`).join() === 'E@5,A@8,E7@11' && ch.ignored.join() === 'PM' && ch.blocks[0].chords.length === 3, JSON.stringify(ch.events));
   const uk = parseTab(`A|--0--|
 E|--0--|
 C|--0--|
