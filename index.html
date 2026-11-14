@@ -36,6 +36,13 @@
     </div>
   </header>
 
+  <nav class="bottom-nav sections" aria-label="Seções">
+    <button type="button" data-go="acordes" aria-current="page"><span aria-hidden="true">♪</span>Acordes</button>
+    <button type="button" data-go="repertorio"><span aria-hidden="true">★</span>Repertório</button>
+    <button type="button" data-go="tablatura"><span aria-hidden="true">≡</span>Tablatura</button>
+    <button type="button" data-go="identificar"><span aria-hidden="true">?</span>Identificar</button>
+  </nav>
+
   <main class="layout">
     <section class="panel picker" data-view="acordes" aria-label="Escolha do acorde">
       <h2 class="panel-title">Instrumento</h2>
@@ -83,6 +90,10 @@
         <button id="tocar-batida" type="button" class="btn play-btn">▶ Batida</button>
         <button id="favoritar" type="button" class="btn" aria-pressed="false">☆ Favoritar</button>
       </div>
+      <div class="play-extra">
+        <button id="add-prog" type="button" class="btn small" aria-describedby="prog-rascunho">＋ Progressão</button>
+        <span id="prog-rascunho" class="hint"></span>
+      </div>
       <p id="dica-cordas" class="play-hint" hidden>Dica: toque numa corda do diagrama para ouvi-la sozinha.</p>
       <div class="pos-nav viewer-nav">
         <button id="anterior" type="button" class="btn" aria-label="Posição anterior">◀</button>
@@ -107,23 +118,30 @@
     </section>
 
     <section class="panel library" data-view="repertorio" aria-label="Favoritos e repertório">
-      <h2 class="panel-title">Favoritos</h2>
-      <ul id="favoritos" class="item-list"></ul>
-      <h2 class="panel-title">Progressões / Repertório</h2>
-      <form id="prog-form" class="prog-form">
-        <label for="prog-nome" class="sr-only">Nome da progressão</label>
-        <input id="prog-nome" type="text" placeholder="Nome (ex.: Samba em Ré menor)" autocomplete="off">
-        <label for="prog-acordes" class="sr-only">Acordes da progressão</label>
-        <input id="prog-acordes" type="text" placeholder="C7M → A7 → Dm7 → G7(b9)" autocomplete="off" spellcheck="false" required>
-        <button type="submit" class="btn">Salvar progressão</button>
-        <p id="prog-msg" class="form-msg" aria-live="polite"></p>
-      </form>
-      <ul id="progressoes" class="item-list"></ul>
+      <div class="lib-col">
+        <h2 class="panel-title">Favoritos</h2>
+        <ul id="favoritos" class="item-list"></ul>
+      </div>
+      <div class="lib-col">
+        <h2 class="panel-title">Progressões / Repertório</h2>
+        <form id="prog-form" class="prog-form">
+          <label for="prog-nome" class="sr-only">Nome da progressão</label>
+          <input id="prog-nome" type="text" placeholder="Nome (ex.: Samba em Ré menor)" autocomplete="off">
+          <label for="prog-acordes" class="sr-only">Acordes da progressão</label>
+          <input id="prog-acordes" type="text" placeholder="ex.: C7M, A7, Dm7, G7(b9)" autocomplete="off" spellcheck="false" required aria-describedby="prog-dica">
+          <p id="prog-dica" class="hint">Separe os acordes com vírgula, espaço ou <kbd>|</kbd>. Ou use “＋ Progressão” no diagrama de cada acorde.</p>
+          <button type="submit" class="btn">Salvar progressão</button>
+          <p id="prog-msg" class="form-msg" aria-live="polite"></p>
+        </form>
+        <ul id="progressoes" class="item-list"></ul>
+      </div>
     </section>
 
     <section class="panel reverse" data-view="identificar" aria-label="Identificar acorde">
       <h2 class="panel-title">Identificar acorde</h2>
       <p class="hint">Toque no braço para montar um shape (acima da corda: muda ↔ solta) ou digite as casas.</p>
+      <div class="rev-cols">
+      <div class="rev-col">
       <div class="reverse-input">
         <label for="reverso-casas">Casas</label>
         <input id="reverso-casas" type="text" autocomplete="off" spellcheck="false" placeholder="ex.: x32010">
@@ -135,8 +153,12 @@
         <span id="reverso-janela" class="pos-count">Casas 1–5</span>
         <button id="reverso-mais" type="button" class="btn small" aria-label="Casas mais agudas">▶</button>
       </div>
-      <p id="reverso-msg" class="hint reverse-msg" aria-live="polite"></p>
-      <ul id="reverso-resultados" class="result-cards"></ul>
+      </div>
+      <div class="rev-col">
+        <p id="reverso-msg" class="hint reverse-msg" aria-live="polite"></p>
+        <ul id="reverso-resultados" class="result-cards"></ul>
+      </div>
+      </div>
     </section>
     <section class="panel tabmod" data-view="tablatura" data-tabview="biblioteca" aria-label="Tablatura">
       <!-- Biblioteca -->
@@ -243,12 +265,6 @@
     </section>
   </main>
 
-  <nav class="bottom-nav" aria-label="Seções">
-    <button type="button" data-go="acordes" aria-current="page"><span aria-hidden="true">♪</span>Acordes</button>
-    <button type="button" data-go="repertorio"><span aria-hidden="true">★</span>Repertório</button>
-    <button type="button" data-go="tablatura"><span aria-hidden="true">≡</span>Tablatura</button>
-    <button type="button" data-go="identificar"><span aria-hidden="true">?</span>Identificar</button>
-  </nav>
 
   <div id="palco" class="stage" role="dialog" aria-modal="true" aria-labelledby="palco-simbolo" hidden>
     <div class="stage-top">
@@ -263,6 +279,15 @@
       <button id="palco-anterior" type="button" class="btn" aria-label="Acorde anterior">◀</button>
       <button id="palco-tocar" type="button" class="btn play-btn">▶ Tocar</button>
       <button id="palco-avancar" type="button" class="btn" aria-label="Próximo acorde">▶</button>
+    </div>
+  </div>
+
+  <div id="tour" class="tour" role="dialog" aria-modal="false" aria-labelledby="tour-texto" hidden>
+    <p id="tour-texto"></p>
+    <div class="tour-actions">
+      <span id="tour-passo" class="hint"></span>
+      <button id="tour-pular" type="button" class="btn small">Pular</button>
+      <button id="tour-proximo" type="button" class="btn small play-btn">Próximo</button>
     </div>
   </div>
 

@@ -442,6 +442,19 @@ $('favoritar').addEventListener('click', () => {
 });
 
 // ---------- Progressões e modo ensaio ----------
+// "＋ Progressão" no visualizador: acrescenta o acorde ao rascunho do formulário do Repertório
+function renderDraft() {
+  const parts = splitProgression($('prog-acordes').value, parseChord);
+  $('prog-rascunho').textContent = parts.length ? `Rascunho: ${parts.join(' → ')}` : '';
+}
+$('add-prog').addEventListener('click', () => {
+  const v = $('prog-acordes').value.trim();
+  $('prog-acordes').value = v ? `${v}, ${state.chord.symbol}` : state.chord.symbol;
+  renderDraft();
+  notify(`${state.chord.symbol} na progressão — salve em Repertório`);
+});
+$('prog-acordes').addEventListener('input', renderDraft);
+
 $('prog-form').addEventListener('submit', e => {
   e.preventDefault();
   const msg = $('prog-msg');
@@ -454,6 +467,7 @@ $('prog-form').addEventListener('submit', e => {
   msg.textContent = `Progressão “${prog.name}” salva.`;
   notify('Progressão salva');
   $('prog-nome').value = $('prog-acordes').value = '';
+  renderDraft();
   renderLibrary();
 });
 
@@ -651,7 +665,8 @@ function showView(v) {
   document.querySelectorAll('.bottom-nav [data-go]').forEach(b => {
     if (b.dataset.go === v) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
-  if (mobile()) window.scrollTo({ top: 0 });
+  if (v !== 'acordes') endTour();
+  window.scrollTo({ top: 0 });
 }
 document.querySelectorAll('.bottom-nav [data-go]').forEach(b => b.addEventListener('click', () => showView(b.dataset.go)));
 
@@ -692,6 +707,40 @@ addSwipe($('diagrama'), d => {
   if (move(d) && !seen('swipe')) { markSeen('swipe'); $('dica-deslizar-vis').hidden = true; }
 });
 addSwipe($('palco-diagrama'), d => goRehearsal(state.rehearsal.pos + d));
+
+// ---------- Tour de 1ª visita (3 passos, dispensável) ----------
+const TOUR = [
+  { el: () => (mobile() ? document.querySelector('.chord-bar') : document.querySelector('.picker')),
+    text: 'Escolha um acorde: busque pela cifra no topo ou escolha a tônica e o tipo.' },
+  { el: () => document.querySelector('.play'), text: 'Ouça: “Dedilhar” ou “Batida” — ou toque numa corda do diagrama.' },
+  { el: () => $('favoritar'), text: 'Gostou da posição? “☆ Favoritar” guarda no Repertório, junto com suas progressões.' },
+];
+let tourStep = -1;
+function showTour(i) {
+  document.querySelector('.tour-on')?.classList.remove('tour-on');
+  tourStep = i;
+  const st = TOUR[i], target = st.el();
+  $('tour-texto').textContent = st.text;
+  $('tour-passo').textContent = `${i + 1} de ${TOUR.length}`;
+  $('tour-proximo').textContent = i === TOUR.length - 1 ? 'Começar' : 'Próximo';
+  $('tour').hidden = false;
+  target?.classList.add('tour-on');
+  target?.scrollIntoView({ block: 'nearest' });
+  // Cartão no lado oposto ao alvo, para não cobri-lo
+  const r = target?.getBoundingClientRect();
+  $('tour').classList.toggle('top', !!r && r.top + r.height / 2 > innerHeight / 2);
+  $('tour-proximo').focus({ preventScroll: true });
+}
+function endTour() {
+  if (tourStep < 0) return;
+  tourStep = -1;
+  $('tour').hidden = true;
+  document.querySelector('.tour-on')?.classList.remove('tour-on');
+  markSeen('tour');
+}
+$('tour-proximo').addEventListener('click', () => (tourStep < TOUR.length - 1 ? showTour(tourStep + 1) : endTour()));
+$('tour-pular').addEventListener('click', endTour);
+$('tour').addEventListener('keydown', e => { if (e.key === 'Escape') endTour(); });
 
 // ---------- Modo palco ----------
 const stageOpen = () => !$('palco').hidden;
@@ -1368,7 +1417,7 @@ applyPrefs();
 // Dica das cordas: só na 1ª visita
 if (!seen('cordas')) { $('dica-cordas').hidden = false; markSeen('cordas'); }
 renderLibrary();
-window.addEventListener('hashchange', () => applyRoute(location.hash));
+window.addEventListener('hashchange', () => { if (applyRoute(location.hash)) showView('acordes'); });
 if (!applyRoute(location.hash)) {
   routeMode = 'replace';
   selectChord(state.chord);
@@ -1376,3 +1425,4 @@ if (!applyRoute(location.hash)) {
 }
 renderReverse();
 setupPWA();
+if (!seen('tour') && document.body.dataset.view === 'acordes') showTour(0);
