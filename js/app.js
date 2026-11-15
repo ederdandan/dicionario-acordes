@@ -673,8 +673,6 @@ function rtProgression() {
   const [kind, id] = rt.prog.split(':');
   const st = kind === 'estudo' && STUDY_PROGRESSIONS.find(x => x.id === id);
   if (st) return transposeProgression(st, store.prefs().studyKey, parseChord);
-  const mine = kind === 'minha' && store.progressions().find(x => x.id === id);
-  if (mine) return mine;
   rt.prog = 'um';
   return { name: state.chord.symbol, chords: [state.chord.symbol] };
 }
@@ -707,7 +705,7 @@ function renderRhythms() {
     return li;
   }), Object.assign(document.createElement('li'), { textContent: '· = a mão passa sem tocar (deixe soar)' }),
   ...(r.swing ? [Object.assign(document.createElement('li'), { textContent: 'Swing: o “e” vem atrasado, como “TÁ-ra TÁ-ra”' })] : []));
-  // Progressões: um acorde só, as de estudo (no tom escolhido) e as do usuário
+  // Progressões: um acorde só e as de estudo (no tom escolhido); as do usuário ficam no Repertório
   const sel = $('rt-prog');
   const um = option('um', `Só um acorde (${state.chord.symbol}) — para treinar a mão`);
   const groups = STUDY_GROUPS.map(g => {
@@ -715,12 +713,6 @@ function renderRhythms() {
     og.append(...STUDY_PROGRESSIONS.filter(p => p.group === g).map(p => option(`estudo:${p.id}`, `${p.name} (${p.roman})`)));
     return og;
   });
-  const mine = store.progressions();
-  if (mine.length) {
-    const og = Object.assign(document.createElement('optgroup'), { label: 'Minhas progressões' });
-    og.append(...mine.map(p => option(`minha:${p.id}`, p.name)));
-    groups.push(og);
-  }
   sel.replaceChildren(um, ...groups);
   rtProgression();
   sel.value = rt.prog;
