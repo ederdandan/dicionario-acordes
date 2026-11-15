@@ -49,7 +49,7 @@ Os ícones são gerados por `node tools/gen-icons.mjs`.
 | `js/curated.js` | Shapes tradicionais (`{ f: "x-3-2-0-1-0", d: "0-3-2-0-1-0" }`) |
 | `js/diagram.js` | Renderização SVG |
 | `js/audio.js` | Som (Web Audio): amostras gravadas + síntese de reserva |
-| `samples/` | Gravações de violão, viola e baixo (FluidR3_GM, CC BY 3.0 — ver `samples/CREDITOS.md`) |
+| `samples/` | Gravações livres de violão, viola, ukulele, baixo e percussão (CC0 / CC BY — ver `samples/CREDITOS.md`) |
 | `js/storage.js` | Favoritos, progressões, preferências, backup e rota da URL |
 | `js/progressions.js` | Progressões para estudo (dados, músicas de exemplo e transposição) |
 | `js/app.js` | Interface, PWA (instalação/atualização) |

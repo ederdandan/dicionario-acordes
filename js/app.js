@@ -900,7 +900,7 @@ function renderBand() {
   $('rt-banda-padrao').replaceChildren(...defs.map(id => chip(id)));
   $('rt-banda-extra').replaceChildren(...Object.keys(PARTS).filter(id => !defs.includes(id)).map(id => chip(id, true)));
 }
-$('rt-banda').addEventListener('change', e => { rt.band.on = e.target.checked; if (rt.band.on) preloadSamples('baixo'); gc(`ritmo/banda/${rt.band.on ? 'ativar' : 'desativar'}`); renderBand(); });
+$('rt-banda').addEventListener('change', e => { rt.band.on = e.target.checked; if (rt.band.on) { preloadSamples('baixo'); preloadSamples('percussao'); } gc(`ritmo/banda/${rt.band.on ? 'ativar' : 'desativar'}`); renderBand(); });
 $('rt-som-vol').addEventListener('input', e => { $('rt-som-vol-txt').textContent = `${e.target.value}%`; });
 $('rt-som-vol').addEventListener('change', e => gc(`ritmo/volume-instrumento/${e.target.value}`, { throttleMs: 10000 }));
 $('rt-banda-reset').addEventListener('click', () => { rt.band.for = null; gc('ritmo/banda/padrao'); renderBand(); });

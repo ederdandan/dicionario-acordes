@@ -13,15 +13,15 @@ export const TIMBRES = {
 /** Baixo do acompanhamento (Karplus-Strong mais grave e abafado). */
 const BASS = { t60: 1.6, blend: 0.6, pluck: 0.2, gain: 0.55 };
 /**
- * Amostras gravadas (FluidR3_GM, CC BY 3.0 — ver samples/CREDITOS.md): uma nota a cada 3 semitons,
- * reafinada por playbackRate. decay = constante de tempo (s) extra para encurtar a sustentação (ukulele).
+ * Amostras gravadas (fontes e licenças em samples/CREDITOS.md): uma nota a cada 3 semitons,
+ * reafinada por playbackRate. decay = constante de tempo (s) extra para encurtar a sustentação.
  */
-const SAMPLE_SETS = { nylon: { lo: 39, hi: 84 }, aco: { lo: 39, hi: 84 }, baixo: { lo: 33, hi: 60 } };
+const SAMPLE_SETS = { nylon: { lo: 39, hi: 84 }, aco: { lo: 39, hi: 84 }, baixo: { lo: 33, hi: 60 }, ukulele: { lo: 60, hi: 81 } };
 // peak = pico da amostra normalizada, calibrado para soar tão alto quanto a síntese (RMS medido offline)
 const SAMPLE_FOR = {
   violao: { set: 'nylon', peak: 0.3 },
   viola: { set: 'aco', peak: 0.48 },
-  ukulele: { set: 'nylon', peak: 0.4, decay: 0.28 },
+  ukulele: { set: 'ukulele', peak: 0.4 },
   baixo: { set: 'baixo', peak: 0.3 },
 };
 let samplesOn = true;
@@ -209,6 +209,7 @@ const SAMPLE_BASE = new URL('../samples/', import.meta.url);
  * silêncio no começo) e normaliza o pico. Enquanto não terminar, as notas usam a síntese.
  */
 export function preloadSamples(instrumentId) {
+  if (instrumentId === 'percussao') return preloadDrums();
   const set = SAMPLE_FOR[instrumentId]?.set;
   if (!ctx || !set || sampleSets.has(set) || typeof fetch !== 'function') return;
   sampleSets.set(set, 'loading');
@@ -230,11 +231,35 @@ export function preloadSamples(instrumentId) {
 
 function prepSample(buffer) {
   const d = buffer.getChannelData(0);
+  // fade final de 40 ms (algumas gravações foram cortadas para ficar menores)
+  for (let c = 0, f = Math.min(d.length, Math.round(buffer.sampleRate * 0.04)); c < buffer.numberOfChannels; c++) {
+    const ch = buffer.getChannelData(c);
+    for (let i = 0; i < f; i++) ch[ch.length - 1 - i] *= i / f;
+  }
   let peak = 0;
   for (let i = 0; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i]));
   let i = 0;
   while (i < d.length && Math.abs(d[i]) < peak * 0.02) i++;
   return { buffer, offset: Math.max(0, i / buffer.sampleRate - 0.002), norm: peak > 0 ? 1 / peak : 1 };
+}
+
+/**
+ * Percussão gravada (samples/percussao/<peça>-forte.wav = X e -leve.wav = x; sem -leve usa o forte mais baixo).
+ * [forte, leve] = ganho calibrado para soar tão alto quanto a percussão sintetizada (RMS medido offline).
+ */
+const DRUM_LEVEL = { bumbo: [0.76, 0.48], caixa: [0.18, 0.1], chimbal: [0.05, 0.03], surdo: [0.67, 0.13], zabumba: [0.38, 0.06],
+  triangulo: [0.11, 0.05], pandeiro: [0.12, 0.07], tamborim: [0.2, 0.1], ganza: [0.05, 0.045], agogo: [0.32, 0.2],
+  conga: [0.28, 0.05], palmas: [0.1, 0.13], clave: [0.4, 0.1] };
+function preloadDrums() {
+  if (!ctx || sampleSets.has('percussao') || typeof fetch !== 'function') return;
+  sampleSets.set('percussao', 'loading');
+  const c = ctx, load = file => fetch(new URL(`percussao/${file}.wav`, SAMPLE_BASE))
+    .then(r => (r.ok ? r.arrayBuffer() : null))
+    .then(data => data && new Promise((ok, fail) => { const p = c.decodeAudioData(data, ok, fail); if (p?.catch) p.catch(fail); }))
+    .then(b => b && prepSample(b))
+    .catch(() => null);
+  Promise.all(Object.keys(DRUM_LEVEL).map(part => Promise.all([load(`${part}-forte`), load(`${part}-leve`)]).then(([X, x]) => [part, { X, x }])))
+    .then(list => { if (ctx === c) sampleSets.set('percussao', { drums: new Map(list.filter(([, d]) => d.X)) }); });
 }
 
 /** Amostra mais próxima da nota (MIDI fracionário) ou null se o conjunto ainda não está pronto. */
@@ -444,6 +469,22 @@ const DRUMS = {
 export function scheduleDrum(part, when, { accent = true, gain = 1, human = 1 } = {}) {
   if (!DRUMS[part] || !unlock() || !noise) return;
   const r = () => (Math.random() * 2 - 1) * human;
+  const st = samplesOn && sampleSets.get('percussao');
+  if (samplesOn && !st) preloadDrums();
+  const d = st?.drums?.get(part);
+  if (d) { // gravação: um BufferSource → ganho → master (com reverb); variação humana de afinação e força
+    const smp = accent ? d.X : d.x || d.X;
+    const src = ctx.createBufferSource(), out = ctx.createGain();
+    src.buffer = smp.buffer;
+    src.playbackRate.value = 1 + 0.015 * r();
+    out.gain.value = gain * DRUM_LEVEL[part][accent ? 0 : 1] * smp.norm * (1 + 0.12 * r());
+    src.connect(out).connect(master);
+    const h = { out, nodes: [src, out] };
+    hits.add(h);
+    src.onended = () => { h.nodes.forEach(n => n.disconnect()); hits.delete(h); };
+    src.start(Math.max(when, ctx.currentTime), smp.offset);
+    return;
+  }
   hit(Math.max(when, ctx.currentTime), gain * 0.5 * (1 + 0.12 * r()), DRUMS[part](accent), 1 + 0.015 * r());
 }
 
