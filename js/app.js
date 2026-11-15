@@ -826,8 +826,9 @@ function rtTick() {
     const ci = rt.chord, step = rt.step, when = rt.next + (r.swing && step % 2 ? 60 / rt.bpm / r.sub / 3 : 0);
     if ($('rt-metronomo').checked && step % r.sub === 0) scheduleClick(when, step % (r.meter * r.sub) === 0);
     if (rt.band.on && step % r.sub === 0) rtBand(r, ci, when);
-    const st = $('rt-som').checked && rt.frets[ci] && strokeFor(r.steps[step], rt.frets[ci]);
-    if (st) scheduleFrets(st.frets, state.instrument, tun(), when + jitter(0.004), { ...st, gain: st.gain * (step % r.sub === 0 ? 1 : 0.85) * (1 + jitter(0.08)) });
+    const instVol = +$('rt-som-vol').value / 100;
+    const st = $('rt-som').checked && instVol > 0 && rt.frets[ci] && strokeFor(r.steps[step], rt.frets[ci]);
+    if (st) scheduleFrets(st.frets, state.instrument, tun(), when + jitter(0.004), { ...st, gain: instVol * st.gain * (step % r.sub === 0 ? 1 : 0.85) * (1 + jitter(0.08)) });
     later(when, () => {
       if (step === 0 && ci === 0) rt.shown = -1; // após a contagem, repõe o texto do próximo acorde
       showRtChord(ci);
@@ -878,6 +879,8 @@ function renderBand() {
   $('rt-banda-extra').replaceChildren(...Object.keys(PARTS).filter(id => !defs.includes(id)).map(id => chip(id, true)));
 }
 $('rt-banda').addEventListener('change', e => { rt.band.on = e.target.checked; gc(`ritmo/banda/${rt.band.on ? 'ativar' : 'desativar'}`); renderBand(); });
+$('rt-som-vol').addEventListener('input', e => { $('rt-som-vol-txt').textContent = `${e.target.value}%`; });
+$('rt-som-vol').addEventListener('change', e => gc(`ritmo/volume-instrumento/${e.target.value}`, { throttleMs: 10000 }));
 $('rt-banda-reset').addEventListener('click', () => { rt.band.for = null; gc('ritmo/banda/padrao'); renderBand(); });
 
 function renderRtBtn() {

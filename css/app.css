@@ -331,6 +331,7 @@ body[data-view="ritmos"] .panel:not([data-view="ritmos"]) { display: none; }
 .rt-band-parts:not(.extra) .chip[aria-pressed="false"] { text-decoration: line-through; color: var(--muted); }
 .rt-band-sub { margin: 10px 0 6px; }
 .rt-band-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 10px; }
+.rt-vol input { width: 140px; accent-color: var(--accent); vertical-align: middle; }
 .rt-band-foot input { width: 140px; accent-color: var(--accent); vertical-align: middle; }
 .rt-ctrl select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 4px 6px; }
 @media (min-width: 860px) {
