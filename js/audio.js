@@ -218,6 +218,19 @@ export function scheduleFrets(frets, instrumentId, tuning, when, { strum = 0, ga
   return voices.length;
 }
 
+/** Clique de metrônomo no instante `when` (accent = 1º tempo, mais agudo e forte). */
+export function scheduleClick(when, accent = false) {
+  if (!unlock()) return;
+  const t = Math.max(when, ctx.currentTime), o = ctx.createOscillator(), g = ctx.createGain();
+  o.frequency.value = accent ? 1600 : 1000;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(accent ? 0.5 : 0.3, t + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+  o.connect(g).connect(master);
+  o.onended = () => { o.disconnect(); g.disconnect(); };
+  o.start(t); o.stop(t + 0.06);
+}
+
 /** Abafa tudo o que soa ou está agendado. */
 export function stopAll() {
   if (ctx) active.forEach(v => release(v, ctx.currentTime));

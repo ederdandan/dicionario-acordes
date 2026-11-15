@@ -4,10 +4,10 @@ import { parseChord, suggest } from './parser.js';
 import { INSTRUMENTS, DEFAULT_INSTRUMENT, DEFAULT_TUNING } from './instruments.js';
 import { getVoicings, identifyChord } from './voicings.js';
 import { renderDiagram, renderEditor } from './diagram.js';
-import { play, unlock, scheduleFrets, stopAll, audioNow, audioLatency, audioState } from './audio.js';
+import { play, unlock, scheduleFrets, scheduleClick, stopAll, audioNow, audioLatency, audioState } from './audio.js';
 import { createStorage, favoriteId, formatRoute, parseRoute, splitProgression } from './storage.js';
 import { STUDY_PROGRESSIONS, STUDY_GROUPS, STUDY_KEYS, transposeProgression } from './progressions.js';
-import { STROKES, LEVELS, rhythmsFor, countLabels, strokeFor } from './rhythms.js';
+import { STROKES, LEVELS, rhythmsFor, countLabels, strokeFor, suggestedRhythm } from './rhythms.js';
 import { trackView, trackEvent, trackEventDebounced, setEnabled as setStats, slug as gcSlug } from './analytics.js';
 
 const $ = id => document.getElementById(id);
@@ -728,6 +728,14 @@ function renderRhythms() {
   if (!tom.options.length) tom.append(...STUDY_KEYS.map(k => option(k, toPt(k))));
   tom.value = store.prefs().studyKey;
   tom.disabled = !rt.prog.startsWith('estudo:');
+  // Ritmo típico da progressão de estudo escolhida
+  const sug = rt.prog.startsWith('estudo:') && suggestedRhythm(rt.prog.slice(7), state.instrument);
+  const sp = $('rt-sugestao');
+  sp.hidden = !sug || sug === r.id;
+  if (!sp.hidden) {
+    const sr = list.find(x => x.id === sug);
+    sp.replaceChildren(`Ritmo típico desta progressão: ${sr.name}`, button('Usar', 'btn', () => { gc('ritmo/sugerido'); selectRhythm(sug); }));
+  }
   loadRtChords();
 }
 
@@ -764,7 +772,9 @@ function setBpm(v) {
 function startRhythm() {
   if (!unlock() || audioNow() === null) return;
   stopAuto();
-  Object.assign(rt, { on: true, chord: 0, step: 0, cycle: 0, next: audioNow() + 0.15 });
+  const r = rhythm();
+  Object.assign(rt, { on: true, chord: 0, step: 0, cycle: 0, next: audioNow() + 0.15,
+    count: $('rt-contagem').checked ? r.meter * (r.meter <= 2 ? 2 : 1) : 0 });
   gc(`ritmo/tocar/${rt.id}`, { title: `Ritmo: ${rhythm().name}`, throttleMs: 5000 });
   renderRtBtn();
   rtTick();
@@ -778,23 +788,35 @@ function stopRhythm() {
   rt.ui = [];
   stopAll();
   document.querySelectorAll('.rt-step.now').forEach(e => e.classList.remove('now'));
+  rt.shown = -1;
   showRtChord(0);
   renderRtBtn();
 }
 function rtTick() {
   if (!rt.on) return;
   const r = rhythm(), now = audioNow(), cycles = +$('rt-ciclos').value;
+  const later = (when, fn) => {
+    const id = setTimeout(() => { rt.ui = rt.ui.filter(x => x !== id); if (rt.on) fn(); }, Math.max(0, (when - now + audioLatency()) * 1000));
+    rt.ui.push(id);
+  };
   while (rt.next < now + 0.3) {
+    if (rt.count > 0) { // contagem antes de começar: só cliques
+      const n = rt.count, total = r.meter * (r.meter <= 2 ? 2 : 1), beat = total - n;
+      scheduleClick(rt.next, beat % r.meter === 0);
+      later(rt.next, () => { $('rt-proximo').replaceChildren(Object.assign(document.createElement('span'), { className: 'rt-proximo-count', textContent: `Prepare-se… ${beat % r.meter + 1}` })); });
+      rt.next += 60 / rt.bpm;
+      rt.count--;
+      continue;
+    }
     const ci = rt.chord, step = rt.step, when = rt.next;
-    const st = rt.frets[ci] && strokeFor(r.steps[step], rt.frets[ci]);
+    if ($('rt-metronomo').checked && step % r.sub === 0) scheduleClick(when, step % (r.meter * r.sub) === 0);
+    const st = $('rt-som').checked && rt.frets[ci] && strokeFor(r.steps[step], rt.frets[ci]);
     if (st) scheduleFrets(st.frets, state.instrument, tun(), when, { ...st, gain: st.gain * (step % r.sub === 0 ? 1 : 0.85) });
-    const id = setTimeout(() => {
-      rt.ui = rt.ui.filter(x => x !== id);
-      if (!rt.on) return;
+    later(when, () => {
+      if (step === 0 && ci === 0) rt.shown = -1; // após a contagem, repõe o texto do próximo acorde
       showRtChord(ci);
       document.querySelectorAll('.rt-step').forEach((e, k) => e.classList.toggle('now', k === step));
-    }, Math.max(0, (when - now + audioLatency()) * 1000));
-    rt.ui.push(id);
+    });
     rt.next += 60 / rt.bpm / r.sub;
     if (++rt.step >= r.steps.length) {
       rt.step = 0;
@@ -818,6 +840,16 @@ $('rt-tocar').addEventListener('click', () => (rt.on ? stopRhythm() : startRhyth
 $('rt-menos').addEventListener('click', () => setBpm(rt.bpm - 5));
 $('rt-mais').addEventListener('click', () => setBpm(rt.bpm + 5));
 $('rt-bpm').addEventListener('input', e => setBpm(+e.target.value));
+// Bater o tempo: média dos últimos intervalos (recomeça após 2 s sem tocar)
+const taps = [];
+$('rt-bater').addEventListener('click', () => {
+  const t = performance.now();
+  if (taps.length && t - taps[taps.length - 1] > 2000) taps.length = 0;
+  taps.push(t);
+  if (taps.length > 5) taps.shift();
+  if (taps.length >= 2) setBpm(60000 / ((taps[taps.length - 1] - taps[0]) / (taps.length - 1)));
+  if (taps.length === 4) gc('ritmo/bater-tempo', { throttleMs: 10000 });
+});
 $('rt-prog').addEventListener('change', e => { rt.prog = e.target.value; gc(`ritmo/progressao/${gcSlug(rt.prog)}`); renderRhythms(); });
 $('rt-tom').addEventListener('change', e => { store.setPref('studyKey', e.target.value); renderStudy(); renderRhythms(); });
 setBpm(rhythm().bpm);

@@ -172,6 +172,7 @@
           <select id="rt-prog"></select>
           <label for="rt-tom">Tom</label>
           <select id="rt-tom"></select>
+          <p id="rt-sugestao" class="hint" hidden></p>
         </div>
         <div class="rt-now" aria-live="polite">
           <div id="rt-diagrama" class="rt-diagram"></div>
@@ -184,8 +185,12 @@
             <input id="rt-bpm" type="range" min="40" max="160" step="1" value="76" aria-label="Andamento em BPM">
             <button id="rt-mais" type="button" class="btn" aria-label="Mais rápido (+5 BPM)">+</button>
             <output id="rt-bpm-txt" for="rt-bpm">76 BPM</output>
+            <button id="rt-bater" type="button" class="btn" title="Toque no ritmo da música (4 vezes ou mais) para achar o andamento">Bater o tempo</button>
           </div>
           <label>Compassos por acorde <select id="rt-ciclos"><option value="1">1</option><option value="2" selected>2</option><option value="4">4</option></select></label>
+          <label><input id="rt-som" type="checkbox" checked> Som do instrumento (desligue para tocar junto só com a grade)</label>
+          <label><input id="rt-metronomo" type="checkbox"> Metrônomo</label>
+          <label><input id="rt-contagem" type="checkbox" checked> Contagem antes de começar</label>
           <label><input id="rt-acelerar" type="checkbox"> Acelerar aos poucos (+4 BPM a cada volta, até o andamento do ritmo + 20)</label>
         </div>
       </div>

@@ -59,6 +59,19 @@ export const RHYTHMS = [
     steps: 'K..Pb.P.B.P.bP..', tip: 'O polegar só marca os tempos, sem acento; a pinça é que balança. Treine primeiro só o polegar.' },
 ];
 
+/** Ritmo típico de cada progressão de estudo (em ordem de preferência; o 1º disponível no instrumento vale). */
+export const SUGGESTED = {
+  'pop-4': ['balada'], 'pop-vi': ['balada'], 'anos-50': ['balada'], 'rock-145': ['rock'], 'descida-baixo': ['dedilhado'],
+  baiao: ['baiao'], moda: ['toada', 'guarania'], 'samba-menor': ['samba', 'toada'], 'samba-cadencia': ['samba', 'toada'],
+  'ii-v-i': ['bossa', 'dedilhado'], 'ii-v-i-menor': ['bossa', 'dedilhado'], turnaround: ['bossa', 'balada'], bossa: ['bossa', 'dedilhado'],
+  'ciclo-quintas': ['bossa', 'dedilhado'], 'blues-12': ['rock', 'balada'], 'blues-menor': ['rock', 'dedilhado'],
+  canon: ['dedilhado'], andaluza: ['rock', 'dedilhado'], perfeita: ['valsa'],
+};
+export function suggestedRhythm(progId, instrumentId) {
+  const ok = rhythmsFor(instrumentId).map(r => r.id);
+  return [...(SUGGESTED[progId] || []), 'balada'].find(id => ok.includes(id));
+}
+
 /** Ritmos comuns no instrumento, do mais fácil ao mais difícil. */
 export const rhythmsFor = instrumentId => RHYTHMS.filter(r => r.inst.includes(instrumentId)).sort((a, b) => a.lvl - b.lvl);
 

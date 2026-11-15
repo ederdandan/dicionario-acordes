@@ -28,7 +28,7 @@ import { createStorage, formatRoute, parseRoute, splitProgression } from './js/s
 import { INSTRUMENTS } from './js/instruments.js';
 import { renderDiagram } from './js/diagram.js';
 import { STUDY_PROGRESSIONS, STUDY_KEYS, transposeProgression, transposeChord } from './js/progressions.js';
-import { RHYTHMS, STROKES, rhythmsFor, countLabels, strokeFor } from './js/rhythms.js';
+import { RHYTHMS, STROKES, rhythmsFor, countLabels, strokeFor, suggestedRhythm } from './js/rhythms.js';
 import { play, setContext, activeVoices, voicesFor, ksSamples } from './js/audio.js';
 
 const results = [];
@@ -377,6 +377,8 @@ const firstPc = (v, cs) => { const k = v.frets.findIndex(f => f >= 0); return (c
     return [...r.steps].filter(s => s !== '.').every(s => strokeFor(s, v.frets)?.frets.some(f => f >= 0));
   }));
   report('Todo golpe de todo ritmo soa em G em todos os instrumentos do ritmo', playable);
+  report('Ritmo sugerido: toda progressão de estudo tem um disponível em cada instrumento', Object.keys(INSTRUMENTS).every(i =>
+    STUDY_PROGRESSIONS.every(p => rhythmsFor(i).some(r => r.id === suggestedRhythm(p.id, i)))) && suggestedRhythm('bossa', 'violao') === 'bossa');
 }
 
 // Saída na tela
