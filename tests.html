@@ -30,7 +30,7 @@ import { renderDiagram } from './js/diagram.js';
 import { STUDY_PROGRESSIONS, STUDY_KEYS, transposeProgression, transposeChord } from './js/progressions.js';
 import { RHYTHMS, STROKES, rhythmsFor, countLabels, strokeFor, suggestedRhythm } from './js/rhythms.js';
 import { PARTS, GROOVES, BAND, grooveFor, partPattern, beatEvents, bassMidi, stepsToNext } from './js/band.js';
-import { play, setContext, activeVoices, voicesFor, ksSamples } from './js/audio.js';
+import { play, setContext, activeVoices, voicesFor, ksSamples, scheduleDrum, scheduleBass } from './js/audio.js';
 
 const results = [];
 const report = (name, ok, detail = '') => {
@@ -227,12 +227,15 @@ const firstPc = (v, cs) => { const k = v.frets.findIndex(f => f >= 0); return (c
         started += play(v, id, T(id, t), { course: v.frets.findIndex(f => f >= 0) });
       }
     }
+    // Acompanhamento: todos os instrumentos de percussão (forte e leve) e o baixo, ao mesmo tempo que o violão
+    Object.keys(PARTS).filter(p => p !== 'baixo').forEach((p, i) => { scheduleDrum(p, 0.05 + i * 0.1, { accent: true }); scheduleDrum(p, 2 + i * 0.1, { accent: false }); });
+    scheduleBass(40, 0.1, { len: 1 });
     report('Três modos × três instrumentos iniciam vozes', started > 0 && activeVoices() > 0, `${started} vozes; ${activeVoices()} ativas antes do render`);
     const buf = await off.startRendering();
     await new Promise(r => setTimeout(r, 200));
     let peak = 0;
     for (let c = 0; c < buf.numberOfChannels; c++) for (const x of buf.getChannelData(c)) peak = Math.max(peak, Math.abs(x));
-    report('Áudio audível e sem clipping (limitador)', peak > 0.01 && peak <= 1, `pico ${peak.toFixed(3)}`);
+    report('Áudio audível e sem clipping (limitador, com reverb, percussão e baixo)', peak > 0.01 && peak <= 1, `pico ${peak.toFixed(3)}`);
     report('Sem vazamento: todos os nós liberados após tocar 36×', activeVoices() === 0, `${activeVoices()} vozes restantes`);
   } else {
     report('OfflineAudioContext indisponível — testes de grafo pulados', true);

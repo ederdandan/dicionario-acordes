@@ -827,7 +827,7 @@ function rtTick() {
     if ($('rt-metronomo').checked && step % r.sub === 0) scheduleClick(when, step % (r.meter * r.sub) === 0);
     if (rt.band.on && step % r.sub === 0) rtBand(r, ci, when);
     const st = $('rt-som').checked && rt.frets[ci] && strokeFor(r.steps[step], rt.frets[ci]);
-    if (st) scheduleFrets(st.frets, state.instrument, tun(), when, { ...st, gain: st.gain * (step % r.sub === 0 ? 1 : 0.85) });
+    if (st) scheduleFrets(st.frets, state.instrument, tun(), when + jitter(0.004), { ...st, gain: st.gain * (step % r.sub === 0 ? 1 : 0.85) * (1 + jitter(0.08)) });
     later(when, () => {
       if (step === 0 && ci === 0) rt.shown = -1; // após a contagem, repõe o texto do próximo acorde
       showRtChord(ci);
@@ -847,16 +847,18 @@ function rtTick() {
   }
   rt.timer = setTimeout(rtTick, 60);
 }
+// Toque humano: pequena variação aleatória (±amp) de tempo/força; zero com a opção desligada
+const jitter = amp => ($('rt-humano').checked ? (Math.random() * 2 - 1) * amp : 0);
 // Acompanhamento: percussão e baixo do groove do ritmo, um tempo de cada vez (no início de cada tempo do ritmo)
 function rtBand(r, ci, t0) {
   const g = grooveFor(r), beatDur = 60 / rt.bpm, stepDur = beatDur / g.sub, vol = +$('rt-banda-vol').value / 100;
   const b = rt.beat++ % (g.meter * g.bars);
   for (const e of beatEvents(g, b, [...rt.band.parts])) {
-    const when = t0 + (r.swing && g.sub === 2 && e.frac ? 2 / 3 : e.frac) * beatDur;
-    if (e.part !== 'baixo') { scheduleDrum(e.part, when, { accent: e.sym === 'X', gain: vol }); continue; }
+    const when = t0 + (r.swing && g.sub === 2 && e.frac ? 2 / 3 : e.frac) * beatDur + jitter(0.006);
+    if (e.part !== 'baixo') { scheduleDrum(e.part, when, { accent: e.sym === 'X', gain: vol, human: $('rt-humano').checked ? 1 : 0 }); continue; }
     if (rt.bassPc[ci] == null) continue;
     const len = stepsToNext(partPattern(g, 'baixo'), b * g.sub + Math.round(e.frac * g.sub)) * stepDur * 0.9;
-    scheduleBass(bassMidi(rt.bassPc[ci], e.sym), when, { len, gain: vol });
+    scheduleBass(bassMidi(rt.bassPc[ci], e.sym), when, { len, gain: vol * (1 + jitter(0.08)) });
   }
 }
 // Instrumentos do acompanhamento: os padrões do ritmo (ligados; toque para mutar) e outros para adicionar
