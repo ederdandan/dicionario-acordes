@@ -681,15 +681,7 @@ function renderRhythms() {
   rt.id = r.id;
   $('rt-instrumentos').replaceChildren(...Object.values(INSTRUMENTS).map(i =>
     button(i.name, 'chip', () => setInstrument(i.id), { 'aria-pressed': String(i.id === state.instrument) })));
-  $('rt-lista').replaceChildren(...list.map(x => {
-    const li = document.createElement('li');
-    const b = button('', 'chip', () => selectRhythm(x.id), { 'aria-pressed': String(x.id === r.id) });
-    b.append(Object.assign(document.createElement('span'), { textContent: x.name }),
-      Object.assign(document.createElement('span'), { className: 'lvl', textContent: LEVELS[x.lvl] }),
-      Object.assign(document.createElement('small'), { textContent: x.style }));
-    li.append(b);
-    return li;
-  }));
+  renderRtList();
   $('rt-titulo').textContent = `Como tocar: ${r.name}`;
   $('rt-dica').textContent = r.tip;
   const counts = countLabels(r);
@@ -706,7 +698,8 @@ function renderRhythms() {
     const li = document.createElement('li');
     li.append(Object.assign(document.createElement('b'), { textContent: STROKES[s].label }), STROKES[s].name);
     return li;
-  }), Object.assign(document.createElement('li'), { textContent: '· = a mão passa sem tocar (deixe soar)' }));
+  }), Object.assign(document.createElement('li'), { textContent: '· = a mão passa sem tocar (deixe soar)' }),
+  ...(r.swing ? [Object.assign(document.createElement('li'), { textContent: 'Swing: o “e” vem atrasado, como “TÁ-ra TÁ-ra”' })] : []));
   // Progressões: um acorde só, as de estudo (no tom escolhido) e as do usuário
   const sel = $('rt-prog');
   const um = option('um', `Só um acorde (${state.chord.symbol}) — para treinar a mão`);
@@ -738,6 +731,24 @@ function renderRhythms() {
   }
   loadRtChords();
 }
+
+// Lista de ritmos do instrumento, filtrada pela busca (nome ou estilo, sem acento)
+const fold = t => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+function renderRtList() {
+  const q = fold($('rt-busca').value.trim()), r = rhythm();
+  const list = rhythmsFor(state.instrument).filter(x => !q || fold(`${x.name} ${x.style}`).includes(q));
+  $('rt-lista').replaceChildren(...(list.length ? list.map(x => {
+    const li = document.createElement('li');
+    const b = button('', 'chip', () => selectRhythm(x.id), { 'aria-pressed': String(x.id === r.id) });
+    b.append(Object.assign(document.createElement('span'), { textContent: x.name }),
+      Object.assign(document.createElement('span'), { className: 'lvl', textContent: LEVELS[x.lvl] }),
+      Object.assign(document.createElement('small'), { textContent: x.style }));
+    li.append(b);
+    return li;
+  }) : [Object.assign(document.createElement('li'), { className: 'empty-item', textContent: 'Nenhum ritmo com esse nome neste instrumento.' })]));
+  $('rt-total').textContent = `${list.length} de ${rhythmsFor(state.instrument).length} ritmos`;
+}
+$('rt-busca').addEventListener('input', renderRtList);
 
 function selectRhythm(id) {
   rt.id = id;
@@ -808,7 +819,7 @@ function rtTick() {
       rt.count--;
       continue;
     }
-    const ci = rt.chord, step = rt.step, when = rt.next;
+    const ci = rt.chord, step = rt.step, when = rt.next + (r.swing && step % 2 ? 60 / rt.bpm / r.sub / 3 : 0);
     if ($('rt-metronomo').checked && step % r.sub === 0) scheduleClick(when, step % (r.meter * r.sub) === 0);
     const st = $('rt-som').checked && rt.frets[ci] && strokeFor(r.steps[step], rt.frets[ci]);
     if (st) scheduleFrets(st.frets, state.instrument, tun(), when, { ...st, gain: st.gain * (step % r.sub === 0 ? 1 : 0.85) });
