@@ -134,6 +134,8 @@
         <h2 class="panel-title">Favoritos</h2>
         <ul id="favoritos" class="item-list"></ul>
         <h2 class="panel-title">Minhas progressões</h2>
+        <details id="prog-nova" class="prog-nova">
+        <summary class="btn">＋ Nova progressão</summary>
         <form id="prog-form" class="prog-form">
           <label for="prog-nome" class="sr-only">Nome da progressão</label>
           <input id="prog-nome" type="text" placeholder="Nome (ex.: Samba em Ré menor)" autocomplete="off">
@@ -143,6 +145,7 @@
           <button type="submit" class="btn">Salvar progressão</button>
           <p id="prog-msg" class="form-msg" aria-live="polite"></p>
         </form>
+        </details>
         <ul id="progressoes" class="item-list"></ul>
       </div>
       <div class="lib-col study">
@@ -159,13 +162,16 @@
     <section class="panel rhythms" data-view="ritmos" aria-label="Ritmos">
       <div class="rt-col">
         <h2 class="panel-title">Ritmo</h2>
+        <div id="rt-escolha">
         <div id="rt-instrumentos" class="seg" role="group" aria-label="Instrumento"></div>
         <label for="rt-busca" class="sr-only">Buscar ritmo</label>
         <input id="rt-busca" class="rt-search" type="search" placeholder="Buscar ritmo (ex.: samba, valsa)" autocomplete="off">
         <p class="hint"><span id="rt-total" aria-live="polite"></span> · versões simplificadas para quem está começando; o ritmo “de verdade” tem variações de cada região e músico.</p>
         <ul id="rt-lista" class="rt-list" aria-label="Ritmos do instrumento"></ul>
+        </div>
       </div>
       <div class="rt-col">
+        <button id="rt-trocar" type="button" class="btn rt-trocar" aria-haspopup="dialog" aria-controls="rt-gaveta"></button>
         <h2 class="panel-title" id="rt-titulo">Como tocar</h2>
         <p id="rt-dica" class="hint"></p>
         <div id="rt-grade" class="rt-grid" role="img"></div>
@@ -181,27 +187,34 @@
           <div id="rt-diagrama" class="rt-diagram"></div>
           <div><p id="rt-acorde" class="rt-chord"></p><p id="rt-proximo" class="hint"></p></div>
         </div>
-        <div class="rt-ctrl">
+        <div id="rt-barra" class="rt-bar">
           <button id="rt-tocar" type="button" class="btn play-btn" aria-pressed="false">▶ Tocar</button>
           <div class="rt-speed" role="group" aria-label="Velocidade">
             <button id="rt-menos" type="button" class="btn" aria-label="Mais devagar (−5 BPM)">−</button>
-            <input id="rt-bpm" type="range" min="40" max="160" step="1" value="76" aria-label="Andamento em BPM">
-            <button id="rt-mais" type="button" class="btn" aria-label="Mais rápido (+5 BPM)">+</button>
             <output id="rt-bpm-txt" for="rt-bpm">76 BPM</output>
+            <button id="rt-mais" type="button" class="btn" aria-label="Mais rápido (+5 BPM)">+</button>
+          </div>
+          <span id="rt-barra-acorde" class="rt-bar-chord" aria-hidden="true"></span>
+        </div>
+        <div class="rt-ctrl">
+          <div class="rt-speed-more">
+            <input id="rt-bpm" type="range" min="40" max="160" step="1" value="76" aria-label="Andamento em BPM">
             <button id="rt-bater" type="button" class="btn" title="Toque no ritmo da música (4 vezes ou mais) para achar o andamento">Bater o tempo</button>
           </div>
-          <label>Compassos por acorde <select id="rt-ciclos"><option value="1">1</option><option value="2" selected>2</option><option value="4">4</option></select></label>
-          <label><input id="rt-som" type="checkbox" checked> Som do instrumento (desligue para tocar junto só com a grade)</label>
-          <label class="rt-vol">Volume do instrumento <input id="rt-som-vol" type="range" min="0" max="100" value="100" aria-label="Volume do violão, viola ou ukulele (abaixe para treinar só com o acompanhamento)"> <output id="rt-som-vol-txt" for="rt-som-vol">100%</output></label>
-          <label><input id="rt-metronomo" type="checkbox"> Metrônomo</label>
-          <label><input id="rt-contagem" type="checkbox" checked> Contagem antes de começar</label>
-          <label><input id="rt-humano" type="checkbox" checked> Toque humano (pequenas variações de tempo e força, como uma pessoa tocando)</label>
-          <label><input id="rt-acelerar" type="checkbox"> Acelerar aos poucos (+4 BPM a cada volta, até o andamento do ritmo + 20)</label>
+          <label class="rt-vol">Volume do instrumento <input id="rt-som-vol" type="range" min="0" max="100" value="100" aria-label="Volume do violão, viola ou ukulele (abaixe até 0 para treinar só com o acompanhamento ou só com a grade)"> <output id="rt-som-vol-txt" for="rt-som-vol">100%</output></label>
+          <label class="opt-row"><input id="rt-metronomo" type="checkbox"> <span>Metrônomo</span></label>
+          <details class="rt-mais">
+            <summary>Mais opções</summary>
+            <label class="opt-row">Compassos por acorde <select id="rt-ciclos"><option value="1">1</option><option value="2" selected>2</option><option value="4">4</option></select></label>
+            <label class="opt-row"><input id="rt-contagem" type="checkbox" checked> <span>Contagem antes de começar</span></label>
+            <label class="opt-row"><input id="rt-humano" type="checkbox" checked> <span>Toque humano<small>pequenas variações de tempo e força</small></span></label>
+            <label class="opt-row"><input id="rt-acelerar" type="checkbox"> <span>Acelerar aos poucos<small>+4 BPM a cada volta, até o andamento do ritmo + 20</small></span></label>
+          </details>
         </div>
         <div class="rt-band">
-          <label class="rt-band-toggle"><input id="rt-banda" type="checkbox"> Acompanhamento (percussão e baixo do ritmo)</label>
+          <label class="opt-row rt-band-toggle"><input id="rt-banda" type="checkbox"> <span>Acompanhamento<small>percussão e baixo do ritmo</small></span></label>
           <div id="rt-banda-pecas" hidden>
-            <p class="hint"><span id="rt-banda-nome"></span>. Os instrumentos padrão do ritmo já vêm ligados: toque para mutar ou ligar (dá para mudar tocando). Desligue “Som do instrumento” para você fazer a parte do violão.</p>
+            <p class="hint"><span id="rt-banda-nome"></span>. Os instrumentos padrão do ritmo já vêm ligados: toque para mutar ou ligar (dá para mudar tocando). Abaixe o “Volume do instrumento” até 0 para você fazer a parte do violão.</p>
             <div id="rt-banda-padrao" class="rt-band-parts" role="group" aria-label="Instrumentos padrão do ritmo"></div>
             <p class="hint rt-band-sub">Adicionar outros:</p>
             <div id="rt-banda-extra" class="rt-band-parts extra" role="group" aria-label="Outros instrumentos"></div>
@@ -279,6 +292,14 @@
       <button id="gaveta-fechar" type="button" class="btn small" aria-label="Fechar">✕</button>
     </div>
     <div id="gaveta-corpo"></div>
+  </dialog>
+
+  <dialog id="rt-gaveta" class="sheet" aria-labelledby="rt-gaveta-titulo">
+    <div class="dialog-head">
+      <h2 id="rt-gaveta-titulo">Escolher ritmo</h2>
+      <button id="rt-gaveta-fechar" type="button" class="btn small" aria-label="Fechar">✕</button>
+    </div>
+    <div id="rt-gaveta-corpo"></div>
   </dialog>
 
   <dialog id="ajustes" class="ios-dialog settings" aria-labelledby="ajustes-titulo">

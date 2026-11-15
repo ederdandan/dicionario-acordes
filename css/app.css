@@ -182,6 +182,9 @@ kbd { font: .9em ui-monospace, Menlo, Consolas, monospace; border: 1px solid var
 .rehearsal-auto select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 4px 6px; min-height: 36px; }
 .rehearsal-auto #ensaio-auto[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
 .study-songs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; flex: 1 1 100%; margin: 2px 0 4px; font-size: .8125rem; }
+.prog-nova > summary { list-style: none; display: inline-flex; align-items: center; min-height: 44px; margin: 4px 0 8px; font-weight: 600; }
+.prog-nova > summary::-webkit-details-marker { display: none; }
+.prog-nova[open] > summary { margin-bottom: 10px; }
 .study-songs .chip { min-height: 32px; padding: 2px 8px; font-size: .8125rem; }
 .study-songs .chip.in-key { border-color: var(--accent); font-weight: 600; }
 .study-list li { flex-wrap: wrap; }
@@ -314,16 +317,27 @@ body[data-view="ritmos"] .panel:not([data-view="ritmos"]) { display: none; }
 .rt-diagram svg { width: 100%; height: auto; }
 .rt-chord { margin: 0; font-size: 1.6rem; font-weight: 700; }
 .rt-now .hint { margin: 2px 0 0; }
-.rt-ctrl { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
-.rt-ctrl #rt-tocar { min-width: 120px; }
-.rt-ctrl #rt-tocar[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
+.rt-ctrl { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+#rt-tocar { min-width: 120px; min-height: 44px; }
+.rt-trocar { display: none; }
+.rt-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 6px; }
+.rt-bar-chord { display: none; flex: 1 1 auto; min-width: 0; text-align: right; font-weight: 700; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rt-speed-more { display: flex; align-items: center; gap: 12px; }
+.rt-speed-more input { flex: 1 1 auto; min-width: 0; max-width: 260px; accent-color: var(--accent); }
+.opt-row { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.opt-row input[type="checkbox"] { width: 22px; height: 22px; flex: none; margin: 0; accent-color: var(--accent); }
+.opt-row small { display: block; color: var(--muted); font-size: .8125rem; font-weight: 400; }
+.rt-mais summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; color: var(--accent); }
+.rt-mais[open] summary { margin-bottom: 2px; }
+.sheet .rt-list { max-height: none; overflow: visible; }
+.sheet .seg { margin-top: 2px; }
+#rt-tocar[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
 .rt-speed { display: flex; align-items: center; gap: 6px; }
-.rt-speed .btn { min-width: 40px; font-size: 1.2rem; padding: 4px 10px; }
-.rt-speed input { width: 140px; accent-color: var(--accent); }
+.rt-speed .btn { min-width: 44px; min-height: 44px; font-size: 1.2rem; padding: 4px 10px; }
 #rt-sugestao { flex: 1 1 100%; margin: 4px 0 0; }
 #rt-sugestao .btn { margin-left: 6px; padding: 4px 10px; }
 .rt-proximo-count { color: var(--accent); font-weight: 700; }
-.rt-speed output { min-width: 4.5em; font-variant-numeric: tabular-nums; font-weight: 600; }
+.rt-speed output { min-width: 4.5em; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
 .rt-band { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
 .rt-band-toggle { font-weight: 600; }
 .rt-band-parts { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -385,6 +399,37 @@ body[data-view="ritmos"] .panel:not([data-view="ritmos"]) { display: none; }
   .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   .tabs::-webkit-scrollbar { display: none; }
   .tab { white-space: nowrap; flex: none; }
+
+  /* Formulários: 16px evita o zoom automático do iPhone ao tocar num campo */
+  input, select, textarea, .bar-select { font-size: max(16px, 1rem); }
+
+  /* Diagrama mais baixo: a faixa de posições aparece sem rolar */
+  .diagram-main svg { max-height: 34vh; }
+
+  /* Ritmos: escolha do ritmo numa gaveta; Tocar/velocidade numa barra fixa acima do menu */
+  .rhythms > .rt-col:first-child { display: none; }
+  .rt-trocar { display: flex; flex-direction: column; align-items: flex-start; width: 100%; min-height: 52px; margin: 0 0 8px; text-align: left; font-weight: 700; font-size: 1.05rem; }
+  .rt-trocar small { font-weight: 400; font-size: .8125rem; color: var(--muted); }
+  /* A barra vai para o fim da coluna (order) e o sticky a puxa para o rodapé da tela em toda a rolagem */
+  .rhythms > .rt-col:last-child { display: flex; flex-direction: column; }
+  .rhythms > .rt-col:last-child > * { flex: none; }
+  .rt-bar {
+    order: 1; margin-top: 12px !important;
+    position: sticky; bottom: calc(68px + env(safe-area-inset-bottom)); z-index: 20; flex-wrap: nowrap; gap: 8px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 6px 8px; margin: 4px -6px;
+    box-shadow: 0 4px 18px rgb(0 0 0 / .14);
+  }
+  .rt-bar #rt-tocar { min-width: 96px; padding: 6px 10px; }
+  .rt-bar-chord { display: block; }
+  .rt-bar .rt-speed { gap: 4px; }
+  .rt-bar .rt-speed output { min-width: 3.6em; font-size: .9rem; }
+  .rt-speed-more { flex-wrap: wrap; }
+  body[data-view="ritmos"] .toast { bottom: calc(144px + env(safe-area-inset-bottom)); }
+
+  /* Alvos de toque de pelo menos 44px */
+  .study-songs .chip { min-height: 44px; padding: 4px 10px; }
+  .rt-band-parts .chip { min-height: 44px; }
+  #reverso-menos, #reverso-mais { min-width: 44px; min-height: 44px; }
 
   /* Miniaturas numa faixa horizontal */
   .thumbs { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 4px; scrollbar-width: thin; }

@@ -521,6 +521,7 @@ function copyProgression(name, chords) {
   $('prog-acordes').value = chords.join(', ');
   renderDraft();
   $('prog-msg').textContent = 'Edite à vontade e toque em “Salvar progressão”.';
+  $('prog-nova').open = true;
   $('prog-form').scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   $('prog-acordes').focus({ preventScroll: true });
 }
@@ -686,6 +687,8 @@ function renderRhythms() {
     button(i.name, 'chip', () => setInstrument(i.id), { 'aria-pressed': String(i.id === state.instrument) })));
   renderRtList();
   $('rt-titulo').textContent = `Como tocar: ${r.name}`;
+  $('rt-trocar').replaceChildren(Object.assign(document.createElement('span'), { textContent: `${r.name} · ${LEVELS[r.lvl]}` }),
+    Object.assign(document.createElement('small'), { textContent: `${inst().name} — trocar ritmo ▾` }));
   $('rt-dica').textContent = r.tip;
   renderBand();
   const counts = countLabels(r);
@@ -753,9 +756,24 @@ function renderRtList() {
   $('rt-total').textContent = `${list.length} de ${rhythmsFor(state.instrument).length} ritmos`;
 }
 $('rt-busca').addEventListener('input', renderRtList);
+// Celular: a lista de ritmos (com instrumento e busca) abre numa gaveta, como a escolha de acorde
+$('rt-trocar').addEventListener('click', () => {
+  $('rt-gaveta-corpo').append($('rt-escolha'));
+  $('rt-gaveta').showModal();
+  gc('ritmo/gaveta');
+  ($('rt-lista').querySelector('[aria-pressed="true"]') || $('rt-busca')).focus();
+  $('rt-lista').querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: 'center' });
+});
+$('rt-gaveta-fechar').addEventListener('click', () => $('rt-gaveta').close());
+$('rt-gaveta').addEventListener('click', e => { if (e.target === $('rt-gaveta')) $('rt-gaveta').close(); });
+$('rt-gaveta').addEventListener('close', () => {
+  document.querySelector('.rhythms .rt-col').append($('rt-escolha'));
+  $('rt-trocar').focus();
+});
 
 function selectRhythm(id) {
   rt.id = id;
+  if ($('rt-gaveta').open) $('rt-gaveta').close();
   setBpm(rhythm().bpm);
   gc(`ritmo/escolher/${id}`);
   renderRhythms();
@@ -775,6 +793,7 @@ function showRtChord(i) {
   const sym = rt.chords[i], v = getVoicings(parseChord(sym), state.instrument, state.tuning, { max: 8 })[0];
   $('rt-diagrama').replaceChildren(...(v ? [renderDiagram(v, inst(), tun(), { compact: true, leftHanded: lefty() })] : []));
   $('rt-acorde').textContent = sym;
+  $('rt-barra-acorde').textContent = rt.chords.length > 1 ? `${sym} → ${rt.chords[(i + 1) % rt.chords.length]}` : sym;
   $('rt-proximo').textContent = rt.chords.length > 1
     ? `Acorde ${i + 1} de ${rt.chords.length} · próximo: ${rt.chords[(i + 1) % rt.chords.length]}` : 'Repita até a mão ficar solta.';
 }
@@ -795,6 +814,7 @@ function startRhythm() {
   renderRtBtn();
   rtTick();
   checkSound();
+  keepAwake();
 }
 function stopRhythm() {
   if (!rt.on) return;
@@ -807,6 +827,7 @@ function stopRhythm() {
   rt.shown = -1;
   showRtChord(0);
   renderRtBtn();
+  letSleep();
 }
 function rtTick() {
   if (!rt.on) return;
@@ -828,7 +849,7 @@ function rtTick() {
     if ($('rt-metronomo').checked && step % r.sub === 0) scheduleClick(when, step % (r.meter * r.sub) === 0);
     if (rt.band.on && step % r.sub === 0) rtBand(r, ci, when);
     const instVol = +$('rt-som-vol').value / 100;
-    const st = $('rt-som').checked && instVol > 0 && rt.frets[ci] && strokeFor(r.steps[step], rt.frets[ci]);
+    const st = instVol > 0 && rt.frets[ci] && strokeFor(r.steps[step], rt.frets[ci]);
     if (st) scheduleFrets(st.frets, state.instrument, tun(), when + jitter(0.004), { ...st, gain: instVol * st.gain * (step % r.sub === 0 ? 1 : 0.85) * (1 + jitter(0.08)) });
     later(when, () => {
       if (step === 0 && ci === 0) rt.shown = -1; // após a contagem, repõe o texto do próximo acorde
@@ -1166,9 +1187,15 @@ const stageOpen = () => !$('palco').hidden;
 let wakeLock = null, stageReturnFocus = null, ignoreHash = false;
 
 async function keepAwake() {
-  try { if ('wakeLock' in navigator && stageOpen()) wakeLock = await navigator.wakeLock.request('screen'); } catch { /* sem suporte ou negado */ }
+  // Tela acesa no palco e enquanto um ritmo toca (mãos ocupadas no instrumento)
+  try { if ('wakeLock' in navigator && !wakeLock && (stageOpen() || rt.on)) wakeLock = await navigator.wakeLock.request('screen'); } catch { /* sem suporte ou negado */ }
 }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && stageOpen()) keepAwake(); });
+function letSleep() {
+  if (stageOpen() || rt.on) return;
+  wakeLock?.release().catch(() => {});
+  wakeLock = null;
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { wakeLock = null; keepAwake(); } });
 
 function openStage() {
   if (!state.rehearsal || stageOpen()) return;
@@ -1187,8 +1214,7 @@ function closeStage(fromHistory = false) {
   if (!stageOpen()) return;
   $('palco').hidden = true;
   document.documentElement.style.overflow = '';
-  wakeLock?.release().catch(() => {});
-  wakeLock = null;
+  letSleep();
   if (!fromHistory && history.state?.stage) { ignoreHash = true; history.back(); }
   stageReturnFocus?.focus?.();
 }
