@@ -29,6 +29,7 @@ import { INSTRUMENTS } from './js/instruments.js';
 import { renderDiagram } from './js/diagram.js';
 import { STUDY_PROGRESSIONS, STUDY_KEYS, transposeProgression, transposeChord } from './js/progressions.js';
 import { RHYTHMS, STROKES, rhythmsFor, countLabels, strokeFor, suggestedRhythm } from './js/rhythms.js';
+import { PARTS, GROOVES, BAND, grooveFor, partPattern, beatEvents, bassMidi, stepsToNext } from './js/band.js';
 import { play, setContext, activeVoices, voicesFor, ksSamples } from './js/audio.js';
 
 const results = [];
@@ -379,6 +380,21 @@ const firstPc = (v, cs) => { const k = v.frets.findIndex(f => f >= 0); return (c
   report('Todo golpe de todo ritmo soa em G em todos os instrumentos do ritmo', playable);
   report('Ritmo sugerido: toda progressão de estudo tem um disponível em cada instrumento', Object.keys(INSTRUMENTS).every(i =>
     STUDY_PROGRESSIONS.every(p => rhythmsFor(i).some(r => r.id === suggestedRhythm(p.id, i)))) && suggestedRhythm('bossa', 'violao') === 'bossa');
+}
+
+// Acompanhamento (band.js)
+{
+  const bad = Object.values(GROOVES).filter(g => Object.entries(g.parts).some(([p, pat]) => !PARTS[p] || pat.length !== g.meter * g.sub * g.bars
+    || [...pat].some(c => c !== '.' && !(p === 'baixo' ? 'R5O' : 'Xx').includes(c))));
+  report('Grooves: tamanho = tempos × subdivisões × compassos e só símbolos conhecidos', !bad.length, bad.map(g => g.id).join(' '));
+  const off = RHYTHMS.filter(r => { const g = GROOVES[BAND[r.id]]; return !g || (g.sub === 3) !== (r.sub === 3) || (g.meter === 3) !== (r.meter === 3); });
+  report('Todo ritmo tem acompanhamento com o mesmo compasso (3/4, 6/8 ou binário/quaternário)', !off.length, off.map(r => r.id).join(' '));
+  const gen = Object.values(GROOVES).every(g => Object.keys(PARTS).every(p => partPattern(g, p).length === g.meter * g.sub * g.bars));
+  report('Instrumento adicionado gera levada do tamanho certo em todo groove', gen);
+  const samba = grooveFor({ id: 'samba' }), ev = beatEvents(samba, 1, ['surdo', 'baixo']);
+  report('beatEvents: 2º tempo do samba tem surdo aberto e quinta no baixo', ev.some(e => e.part === 'surdo' && e.sym === 'X' && e.frac === 0) && ev.some(e => e.part === 'baixo' && e.sym === '5'));
+  report('Baixo: tônica em Dó2–Si2, quinta e oitava; nota soa até a próxima', bassMidi(0, 'R') === 36 && bassMidi(4, 'R') === 40 && bassMidi(9, '5') === 52 && bassMidi(11, 'O') === 59
+    && stepsToNext('R...5...', 0) === 4 && stepsToNext('R...5...', 4) === 4 && stepsToNext('R.......', 0) === 8);
 }
 
 // Saída na tela

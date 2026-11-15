@@ -4,10 +4,11 @@ import { parseChord, suggest } from './parser.js';
 import { INSTRUMENTS, DEFAULT_INSTRUMENT, DEFAULT_TUNING } from './instruments.js';
 import { getVoicings, identifyChord } from './voicings.js';
 import { renderDiagram, renderEditor } from './diagram.js';
-import { play, unlock, scheduleFrets, scheduleClick, stopAll, audioNow, audioLatency, audioState } from './audio.js';
+import { play, unlock, scheduleFrets, scheduleClick, scheduleDrum, scheduleBass, stopAll, audioNow, audioLatency, audioState } from './audio.js';
 import { createStorage, favoriteId, formatRoute, parseRoute, splitProgression } from './storage.js';
 import { STUDY_PROGRESSIONS, STUDY_GROUPS, STUDY_KEYS, transposeProgression } from './progressions.js';
 import { STROKES, LEVELS, rhythmsFor, countLabels, strokeFor, suggestedRhythm } from './rhythms.js';
+import { PARTS, grooveFor, defaultParts, partPattern, beatEvents, bassMidi, stepsToNext } from './band.js';
 import { trackView, trackEvent, trackEventDebounced, setEnabled as setStats, slug as gcSlug } from './analytics.js';
 
 const $ = id => document.getElementById(id);
@@ -661,7 +662,8 @@ $('ensaio-sair').addEventListener('click', () => { gc('ensaio/sair'); stopAuto()
 $('ensaio-palco').addEventListener('click', () => { gc('ensaio/palco'); openStage(); });
 
 // ---------- Ritmos: padrão de mão direita tocado sobre uma progressão ----------
-const rt = { id: 'balada', prog: 'um', on: false, timer: 0, ui: [], chord: 0, step: 0, cycle: 0, next: 0, shown: -1, chords: [], frets: [], bpm: 76 };
+const rt = { id: 'balada', prog: 'um', on: false, timer: 0, ui: [], chord: 0, step: 0, cycle: 0, next: 0, shown: -1, chords: [], frets: [], bassPc: [], bpm: 76, beat: 0,
+  band: { on: false, for: null, parts: new Set() } };
 const rhythm = () => rhythmsFor(state.instrument).find(r => r.id === rt.id) || rhythmsFor(state.instrument)[0];
 const option = (value, text) => Object.assign(document.createElement('option'), { value, textContent: text });
 
@@ -684,6 +686,7 @@ function renderRhythms() {
   renderRtList();
   $('rt-titulo').textContent = `Como tocar: ${r.name}`;
   $('rt-dica').textContent = r.tip;
+  renderBand();
   const counts = countLabels(r);
   $('rt-grade').replaceChildren(...[...r.steps].map((s, i) => {
     const d = document.createElement('div');
@@ -759,6 +762,7 @@ function selectRhythm(id) {
 
 function loadRtChords() {
   rt.chords = rtProgression().chords;
+  rt.bassPc = rt.chords.map(c => { const p = parseChord(c); return p ? pcOf(p.bass || p.root) : null; });
   rt.frets = rt.chords.map(c => getVoicings(parseChord(c), state.instrument, state.tuning, { max: 8 })[0]?.frets || null);
   rt.shown = -1;
   showRtChord(0);
@@ -784,7 +788,7 @@ function startRhythm() {
   if (!unlock() || audioNow() === null) return;
   stopAuto();
   const r = rhythm();
-  Object.assign(rt, { on: true, chord: 0, step: 0, cycle: 0, next: audioNow() + 0.15,
+  Object.assign(rt, { on: true, chord: 0, step: 0, cycle: 0, beat: 0, next: audioNow() + 0.15,
     count: $('rt-contagem').checked ? r.meter * (r.meter <= 2 ? 2 : 1) : 0 });
   gc(`ritmo/tocar/${rt.id}`, { title: `Ritmo: ${rhythm().name}`, throttleMs: 5000 });
   renderRtBtn();
@@ -821,6 +825,7 @@ function rtTick() {
     }
     const ci = rt.chord, step = rt.step, when = rt.next + (r.swing && step % 2 ? 60 / rt.bpm / r.sub / 3 : 0);
     if ($('rt-metronomo').checked && step % r.sub === 0) scheduleClick(when, step % (r.meter * r.sub) === 0);
+    if (rt.band.on && step % r.sub === 0) rtBand(r, ci, when);
     const st = $('rt-som').checked && rt.frets[ci] && strokeFor(r.steps[step], rt.frets[ci]);
     if (st) scheduleFrets(st.frets, state.instrument, tun(), when, { ...st, gain: st.gain * (step % r.sub === 0 ? 1 : 0.85) });
     later(when, () => {
@@ -842,6 +847,37 @@ function rtTick() {
   }
   rt.timer = setTimeout(rtTick, 60);
 }
+// Acompanhamento: percussão e baixo do groove do ritmo, um tempo de cada vez (no início de cada tempo do ritmo)
+function rtBand(r, ci, t0) {
+  const g = grooveFor(r), beatDur = 60 / rt.bpm, stepDur = beatDur / g.sub, vol = +$('rt-banda-vol').value / 100;
+  const b = rt.beat++ % (g.meter * g.bars);
+  for (const e of beatEvents(g, b, [...rt.band.parts])) {
+    const when = t0 + (r.swing && g.sub === 2 && e.frac ? 2 / 3 : e.frac) * beatDur;
+    if (e.part !== 'baixo') { scheduleDrum(e.part, when, { accent: e.sym === 'X', gain: vol }); continue; }
+    if (rt.bassPc[ci] == null) continue;
+    const len = stepsToNext(partPattern(g, 'baixo'), b * g.sub + Math.round(e.frac * g.sub)) * stepDur * 0.9;
+    scheduleBass(bassMidi(rt.bassPc[ci], e.sym), when, { len, gain: vol });
+  }
+}
+// Instrumentos do acompanhamento: os padrões do ritmo (ligados; toque para mutar) e outros para adicionar
+function renderBand() {
+  const r = rhythm(), g = grooveFor(r), defs = defaultParts(g), bd = rt.band;
+  if (bd.for !== r.id) { bd.for = r.id; bd.parts = new Set(defs); }
+  $('rt-banda').checked = bd.on;
+  $('rt-banda-pecas').hidden = !bd.on;
+  $('rt-banda-nome').textContent = `Levada: ${g.name}`;
+  const chip = (id, extra) => button(`${extra ? '+ ' : ''}${PARTS[id].name}`, 'chip', () => {
+    const on = !bd.parts.has(id);
+    on ? bd.parts.add(id) : bd.parts.delete(id);
+    gc(`ritmo/banda/${on ? 'ligar' : 'mutar'}/${id}`);
+    renderBand();
+  }, { 'aria-pressed': String(bd.parts.has(id)), title: bd.parts.has(id) ? 'Tocando — toque para mutar' : extra ? 'Toque para adicionar' : 'Mudo — toque para ligar' });
+  $('rt-banda-padrao').replaceChildren(...defs.map(id => chip(id)));
+  $('rt-banda-extra').replaceChildren(...Object.keys(PARTS).filter(id => !defs.includes(id)).map(id => chip(id, true)));
+}
+$('rt-banda').addEventListener('change', e => { rt.band.on = e.target.checked; gc(`ritmo/banda/${rt.band.on ? 'ativar' : 'desativar'}`); renderBand(); });
+$('rt-banda-reset').addEventListener('click', () => { rt.band.for = null; gc('ritmo/banda/padrao'); renderBand(); });
+
 function renderRtBtn() {
   const b = $('rt-tocar');
   b.textContent = rt.on ? '■ Parar' : '▶ Tocar';

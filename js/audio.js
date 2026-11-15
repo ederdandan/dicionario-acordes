@@ -9,6 +9,8 @@ export const TIMBRES = {
   viola: { t60: 3.2, blend: 0.3, pluck: 0.75, gain: 0.2, pairDelay: 0.008 },
   ukulele: { t60: 1.1, blend: 0.45, pluck: 0.55, gain: 0.34, pairDelay: 0 },
 };
+/** Baixo do acompanhamento (Karplus-Strong mais grave e abafado). */
+const BASS = { t60: 1.6, blend: 0.6, pluck: 0.2, gain: 0.55 };
 export const MODES = { dedilhar: 0.065, batida: 0.018 };
 const DETUNE = [3, -2, 2, -3, 1.5, -1.5]; // cents da 2ª corda de cada par (determinístico → cacheável)
 
@@ -54,7 +56,8 @@ export function voicesFor(frets, instrumentId, tuning, course = null) {
 }
 
 // ---------- Grafo de áudio ----------
-let ctx = null, master = null;
+let ctx = null, master = null, noise = null;
+const hits = new Set();               // golpes de percussão agendados/soando ({ nodes, out })
 const active = new Set();              // vozes soando
 const byCourse = new Map();            // course → Set de vozes (abafa a corda ao re-tocá-la)
 const cache = new Map();               // buffers prontos (LRU simples)
@@ -77,6 +80,10 @@ function build(c) {
   clip.curve = curve;
   master.connect(comp).connect(clip).connect(ctx.destination);
   cache.clear();
+  noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate); // 1 s de ruído branco para a percussão
+  const nd = noise.getChannelData(0);
+  let s = 12345;
+  for (let i = 0; i < nd.length; i++) nd[i] = ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296) * 2 - 1;
 }
 
 /** Para testes: usa um contexto externo (p.ex. OfflineAudioContext). */
@@ -134,7 +141,7 @@ function bufferFor(instrumentId, freq) {
   const key = `${instrumentId}:${freq.toFixed(3)}`;
   let b = cache.get(key);
   if (b) { cache.delete(key); cache.set(key, b); return b; }
-  const data = ksSamples(freq, ctx.sampleRate, TIMBRES[instrumentId] || TIMBRES.violao, Math.round(freq * 1000));
+  const data = ksSamples(freq, ctx.sampleRate, TIMBRES[instrumentId] || (instrumentId === 'baixo' ? BASS : TIMBRES.violao), Math.round(freq * 1000));
   b = ctx.createBuffer(1, data.length, ctx.sampleRate);
   b.copyToChannel ? b.copyToChannel(data, 0) : b.getChannelData(0).set(data);
   cache.set(key, b);
@@ -233,5 +240,83 @@ export function scheduleClick(when, accent = false) {
 
 /** Abafa tudo o que soa ou está agendado. */
 export function stopAll() {
-  if (ctx) active.forEach(v => release(v, ctx.currentTime));
+  if (!ctx) return;
+  active.forEach(v => release(v, ctx.currentTime));
+  hits.forEach(h => { h.out.gain.cancelScheduledValues(ctx.currentTime); h.out.gain.setTargetAtTime(0, ctx.currentTime, 0.01); });
+}
+
+// ---------- Acompanhamento: percussão sintetizada e baixo ----------
+/** Um golpe: fontes (osciladores/ruído) → envelope próprio → `out` → master. Tudo desconectado ao terminar. */
+function hit(t, dur, level, layers) {
+  const out = ctx.createGain();
+  out.gain.value = level;
+  out.connect(master);
+  const h = { out, nodes: [out] };
+  let left = 0;
+  const done = () => { if (--left > 0) return; h.nodes.forEach(n => n.disconnect()); hits.delete(h); };
+  for (const L of layers) {
+    const g = ctx.createGain(), at = t + (L.at || 0), d = L.decay;
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(L.peak, at + (L.attack || 0.002));
+    g.gain.exponentialRampToValueAtTime(0.0001, at + d);
+    let src;
+    if (L.noise) {
+      src = ctx.createBufferSource();
+      src.buffer = noise;
+      const f = ctx.createBiquadFilter();
+      f.type = L.noise; f.frequency.value = L.freq; f.Q.value = L.q || 0.8;
+      src.connect(f).connect(g);
+      h.nodes.push(f);
+    } else {
+      src = ctx.createOscillator();
+      src.type = L.wave || 'sine';
+      src.frequency.setValueAtTime(L.freq, at);
+      if (L.to) src.frequency.exponentialRampToValueAtTime(L.to, at + (L.sweep || d));
+      src.connect(g);
+    }
+    g.connect(out);
+    h.nodes.push(src, g);
+    left++;
+    src.onended = done;
+    src.start(at);
+    src.stop(at + Math.min(dur, d) + 0.02);
+  }
+  hits.add(h);
+}
+
+/** Receitas: [camadas, duração]. a = golpe forte (X) ou leve/secundário (x). */
+const DRUMS = {
+  bumbo: a => [{ freq: 140, to: 45, sweep: 0.1, peak: a ? 1 : 0.6, decay: 0.35 }],
+  caixa: a => [{ noise: 'highpass', freq: 1200, peak: a ? 0.6 : 0.25, decay: a ? 0.16 : 0.08 },
+    { wave: 'triangle', freq: 190, to: 160, peak: a ? 0.4 : 0.2, decay: 0.08 }],
+  chimbal: a => [{ noise: 'highpass', freq: 7000, peak: a ? 0.35 : 0.18, decay: a ? 0.06 : 0.04 }],
+  surdo: a => [{ freq: 95, to: 60, sweep: 0.15, peak: a ? 0.95 : 0.55, decay: a ? 0.7 : 0.15 }],
+  zabumba: a => (a ? [{ freq: 120, to: 55, sweep: 0.12, peak: 0.95, decay: 0.35 }, { noise: 'lowpass', freq: 800, peak: 0.3, decay: 0.05 }]
+    : [{ noise: 'bandpass', freq: 3000, q: 2, peak: 0.5, decay: 0.04 }]),
+  triangulo: a => [{ freq: 4300, peak: 0.12, decay: a ? 0.7 : 0.06 }, { freq: 6900, peak: 0.06, decay: a ? 0.5 : 0.05 }],
+  pandeiro: a => [...(a ? [{ freq: 180, to: 140, peak: 0.6, decay: 0.15 }] : []),
+    { noise: 'highpass', freq: 6000, peak: a ? 0.25 : 0.18, decay: 0.08 }],
+  tamborim: a => [{ wave: 'triangle', freq: 750, peak: a ? 0.5 : 0.3, decay: 0.06 }, { noise: 'bandpass', freq: 3000, peak: 0.2, decay: 0.03 }],
+  ganza: a => [{ noise: 'bandpass', freq: 6000, q: 1, attack: 0.015, peak: a ? 0.3 : 0.15, decay: 0.07 }],
+  agogo: a => [{ freq: a ? 920 : 620, peak: 0.3, decay: 0.25 }, { freq: (a ? 920 : 620) * 2.7, peak: 0.06, decay: 0.12 }],
+  conga: a => (a ? [{ freq: 220, to: 200, peak: 0.6, decay: 0.25 }]
+    : [{ freq: 330, peak: 0.35, decay: 0.05 }, { noise: 'bandpass', freq: 1500, peak: 0.35, decay: 0.05 }]),
+  palmas: a => [0, 0.01, 0.02].map((at, i) => ({ noise: 'bandpass', freq: 1100, at, peak: (a ? 0.5 : 0.25) * (i === 2 ? 1 : 0.6), decay: i === 2 ? 0.1 : 0.012 })),
+  clave: a => [{ freq: 2500, peak: a ? 0.5 : 0.3, decay: 0.05 }],
+};
+
+/** Golpe de percussão no instante `when`. accent = X (forte/principal); gain = volume do acompanhamento. */
+export function scheduleDrum(part, when, { accent = true, gain = 1 } = {}) {
+  if (!DRUMS[part] || !unlock() || !noise) return;
+  const layers = DRUMS[part](accent);
+  hit(Math.max(when, ctx.currentTime), Math.max(...layers.map(l => (l.at || 0) + l.decay)), gain * 0.5, layers);
+}
+
+/** Nota do baixo (MIDI) no instante `when`, abafada após `len` s. Uma nota nova abafa a anterior. */
+export function scheduleBass(midi, when, { len = 0.5, gain = 1 } = {}) {
+  if (!unlock()) return;
+  const t = Math.max(when, ctx.currentTime);
+  for (const old of byCourse.get('baixo') || []) release(old, t);
+  const v = startVoice({ course: 'baixo', midi, cents: 0, offset: 0 }, 'baixo', t, gain * BASS.gain);
+  release(v, t + len);
 }

@@ -324,6 +324,14 @@ body[data-view="ritmos"] .panel:not([data-view="ritmos"]) { display: none; }
 #rt-sugestao .btn { margin-left: 6px; padding: 4px 10px; }
 .rt-proximo-count { color: var(--accent); font-weight: 700; }
 .rt-speed output { min-width: 4.5em; font-variant-numeric: tabular-nums; font-weight: 600; }
+.rt-band { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.rt-band-toggle { font-weight: 600; }
+.rt-band-parts { display: flex; flex-wrap: wrap; gap: 6px; }
+.rt-band-parts .chip { min-height: 36px; padding: 4px 10px; }
+.rt-band-parts:not(.extra) .chip[aria-pressed="false"] { text-decoration: line-through; color: var(--muted); }
+.rt-band-sub { margin: 10px 0 6px; }
+.rt-band-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 10px; }
+.rt-band-foot input { width: 140px; accent-color: var(--accent); vertical-align: middle; }
 .rt-ctrl select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 4px 6px; }
 @media (min-width: 860px) {
   .rhythms { grid-column: 1 / -1; display: grid; grid-template-columns: 300px 1fr; gap: 0 28px; align-items: start; }

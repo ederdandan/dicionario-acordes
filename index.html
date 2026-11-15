@@ -196,6 +196,19 @@
           <label><input id="rt-contagem" type="checkbox" checked> Contagem antes de começar</label>
           <label><input id="rt-acelerar" type="checkbox"> Acelerar aos poucos (+4 BPM a cada volta, até o andamento do ritmo + 20)</label>
         </div>
+        <div class="rt-band">
+          <label class="rt-band-toggle"><input id="rt-banda" type="checkbox"> Acompanhamento (percussão e baixo do ritmo)</label>
+          <div id="rt-banda-pecas" hidden>
+            <p class="hint"><span id="rt-banda-nome"></span>. Os instrumentos padrão do ritmo já vêm ligados: toque para mutar ou ligar (dá para mudar tocando). Desligue “Som do instrumento” para você fazer a parte do violão.</p>
+            <div id="rt-banda-padrao" class="rt-band-parts" role="group" aria-label="Instrumentos padrão do ritmo"></div>
+            <p class="hint rt-band-sub">Adicionar outros:</p>
+            <div id="rt-banda-extra" class="rt-band-parts extra" role="group" aria-label="Outros instrumentos"></div>
+            <div class="rt-band-foot">
+              <label>Volume <input id="rt-banda-vol" type="range" min="0" max="100" value="70" aria-label="Volume do acompanhamento"></label>
+              <button id="rt-banda-reset" type="button" class="btn">Voltar ao padrão</button>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
