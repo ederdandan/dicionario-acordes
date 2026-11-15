@@ -200,16 +200,20 @@ export const audioLatency = () => (ctx ? (ctx.outputLatency || 0) + (ctx.baseLat
 
 /**
  * Agenda as casas (-1 = não toca) no instante `when` do relógio do áudio. Re-tocar uma corda abafa a anterior.
- * strum = intervalo entre cordas (grave → aguda) em s; gain multiplica o volume.
+ * strum = intervalo entre cordas (grave → aguda) em s; gain multiplica o volume;
+ * up = batida para cima (aguda → grave); len > 0 = abafa após `len` s (batida abafada/staccato).
  */
-export function scheduleFrets(frets, instrumentId, tuning, when, { strum = 0, gain = 1 } = {}) {
+export function scheduleFrets(frets, instrumentId, tuning, when, { strum = 0, gain = 1, up = false, len = 0 } = {}) {
   if (!unlock()) return 0;
   const t = Math.max(when, ctx.currentTime);
   const voices = voicesFor(frets, instrumentId, tuning);
   for (const c of new Set(voices.map(v => v.course))) for (const old of byCourse.get(c) || []) release(old, t);
   const level = gain * (TIMBRES[instrumentId] || TIMBRES.violao).gain * Math.min(1, Math.sqrt(6 / Math.max(voices.length, 1)));
-  const order = [...new Set(voices.map(v => v.course))].sort((x, y) => x - y);
-  for (const v of voices) startVoice(v, instrumentId, t + order.indexOf(v.course) * strum + v.offset, level);
+  const order = [...new Set(voices.map(v => v.course))].sort((x, y) => (up ? y - x : x - y));
+  for (const v of voices) {
+    const sv = startVoice(v, instrumentId, t + order.indexOf(v.course) * strum + v.offset, level);
+    if (len > 0) release(sv, t + len + order.indexOf(v.course) * strum);
+  }
   if (active.size > MAX_VOICES) [...active].slice(0, active.size - MAX_VOICES).forEach(v => release(v, ctx.currentTime));
   return voices.length;
 }

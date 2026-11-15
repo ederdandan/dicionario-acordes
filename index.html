@@ -44,6 +44,7 @@
   <nav class="bottom-nav sections" aria-label="Seções">
     <button type="button" data-go="acordes" aria-current="page"><span aria-hidden="true">♪</span>Acordes</button>
     <button type="button" data-go="repertorio"><span aria-hidden="true">★</span>Repertório</button>
+    <button type="button" data-go="ritmos"><span aria-hidden="true">♫</span>Ritmos</button>
     <button type="button" data-go="identificar"><span aria-hidden="true">?</span>Identificar</button>
   </nav>
 
@@ -152,6 +153,41 @@
           <p class="hint">Toque para ensaiar (e use “▶ Tocar progressão” para ouvir sozinha). Toque numa música para ir ao tom original dela. “Copiar” leva a progressão para o formulário, para você criar a sua a partir dela.</p>
         </div>
         <div id="estudo-lista"></div>
+      </div>
+    </section>
+
+    <section class="panel rhythms" data-view="ritmos" aria-label="Ritmos">
+      <div class="rt-col">
+        <h2 class="panel-title">Ritmo</h2>
+        <div id="rt-instrumentos" class="seg" role="group" aria-label="Instrumento"></div>
+        <ul id="rt-lista" class="rt-list" aria-label="Ritmos do instrumento"></ul>
+      </div>
+      <div class="rt-col">
+        <h2 class="panel-title" id="rt-titulo">Como tocar</h2>
+        <p id="rt-dica" class="hint"></p>
+        <div id="rt-grade" class="rt-grid" role="img"></div>
+        <ul id="rt-legenda" class="rt-legend"></ul>
+        <div class="study-head rt-prog">
+          <label for="rt-prog">Progressão</label>
+          <select id="rt-prog"></select>
+          <label for="rt-tom">Tom</label>
+          <select id="rt-tom"></select>
+        </div>
+        <div class="rt-now" aria-live="polite">
+          <div id="rt-diagrama" class="rt-diagram"></div>
+          <div><p id="rt-acorde" class="rt-chord"></p><p id="rt-proximo" class="hint"></p></div>
+        </div>
+        <div class="rt-ctrl">
+          <button id="rt-tocar" type="button" class="btn play-btn" aria-pressed="false">▶ Tocar</button>
+          <div class="rt-speed" role="group" aria-label="Velocidade">
+            <button id="rt-menos" type="button" class="btn" aria-label="Mais devagar (−5 BPM)">−</button>
+            <input id="rt-bpm" type="range" min="40" max="160" step="1" value="76" aria-label="Andamento em BPM">
+            <button id="rt-mais" type="button" class="btn" aria-label="Mais rápido (+5 BPM)">+</button>
+            <output id="rt-bpm-txt" for="rt-bpm">76 BPM</output>
+          </div>
+          <label>Compassos por acorde <select id="rt-ciclos"><option value="1">1</option><option value="2" selected>2</option><option value="4">4</option></select></label>
+          <label><input id="rt-acelerar" type="checkbox"> Acelerar aos poucos (+4 BPM a cada volta, até o andamento do ritmo + 20)</label>
+        </div>
       </div>
     </section>
 

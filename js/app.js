@@ -7,6 +7,7 @@ import { renderDiagram, renderEditor } from './diagram.js';
 import { play, unlock, scheduleFrets, stopAll, audioNow, audioLatency, audioState } from './audio.js';
 import { createStorage, favoriteId, formatRoute, parseRoute, splitProgression } from './storage.js';
 import { STUDY_PROGRESSIONS, STUDY_GROUPS, STUDY_KEYS, transposeProgression } from './progressions.js';
+import { STROKES, LEVELS, rhythmsFor, countLabels, strokeFor } from './rhythms.js';
 import { trackView, trackEvent, trackEventDebounced, setEnabled as setStats, slug as gcSlug } from './analytics.js';
 
 const $ = id => document.getElementById(id);
@@ -110,6 +111,7 @@ function setInstrument(id) {
   trackInstrument();
   selectChord(state.chord);
   renderReverse();
+  renderRhythms();
 }
 
 function setTuning(tid) {
@@ -118,6 +120,7 @@ function setTuning(tid) {
   trackInstrument();
   selectChord(state.chord);
   renderReverse();
+  renderRhythms();
 }
 
 function renderInstruments() {
@@ -602,6 +605,7 @@ const auto = { on: false, timer: 0, ui: [], chord: 0, beat: 0, next: 0, end: 0, 
 function startAuto() {
   const r = state.rehearsal;
   if (!r || !unlock() || audioNow() === null) return;
+  stopRhythm();
   auto.frets = r.prog.chords.map(s => getVoicings(parseChord(s), state.instrument, state.tuning, { max: 8 })[0]?.frets || null);
   Object.assign(auto, { on: true, chord: r.pos, beat: 0, next: audioNow() + 0.15, end: 0 });
   gc('ensaio/tocar-progressao', { title: `Tocar progressão: ${r.prog.name}` });
@@ -655,6 +659,168 @@ $('ensaio-proximo').addEventListener('click', () => goRehearsal(state.rehearsal.
 $('ensaio-tocar').addEventListener('click', () => playCurrent('batida'));
 $('ensaio-sair').addEventListener('click', () => { gc('ensaio/sair'); stopAuto(); closeStage(); state.rehearsal = null; renderRehearsal(); });
 $('ensaio-palco').addEventListener('click', () => { gc('ensaio/palco'); openStage(); });
+
+// ---------- Ritmos: padrão de mão direita tocado sobre uma progressão ----------
+const rt = { id: 'balada', prog: 'um', on: false, timer: 0, ui: [], chord: 0, step: 0, cycle: 0, next: 0, shown: -1, chords: [], frets: [], bpm: 76 };
+const rhythm = () => rhythmsFor(state.instrument).find(r => r.id === rt.id) || rhythmsFor(state.instrument)[0];
+const option = (value, text) => Object.assign(document.createElement('option'), { value, textContent: text });
+
+function rtProgression() {
+  const [kind, id] = rt.prog.split(':');
+  const st = kind === 'estudo' && STUDY_PROGRESSIONS.find(x => x.id === id);
+  if (st) return transposeProgression(st, store.prefs().studyKey, parseChord);
+  const mine = kind === 'minha' && store.progressions().find(x => x.id === id);
+  if (mine) return mine;
+  rt.prog = 'um';
+  return { name: state.chord.symbol, chords: [state.chord.symbol] };
+}
+
+function renderRhythms() {
+  stopRhythm();
+  const list = rhythmsFor(state.instrument), r = rhythm();
+  rt.id = r.id;
+  $('rt-instrumentos').replaceChildren(...Object.values(INSTRUMENTS).map(i =>
+    button(i.name, 'chip', () => setInstrument(i.id), { 'aria-pressed': String(i.id === state.instrument) })));
+  $('rt-lista').replaceChildren(...list.map(x => {
+    const li = document.createElement('li');
+    const b = button('', 'chip', () => selectRhythm(x.id), { 'aria-pressed': String(x.id === r.id) });
+    b.append(Object.assign(document.createElement('span'), { textContent: x.name }),
+      Object.assign(document.createElement('span'), { className: 'lvl', textContent: LEVELS[x.lvl] }),
+      Object.assign(document.createElement('small'), { textContent: x.style }));
+    li.append(b);
+    return li;
+  }));
+  $('rt-titulo').textContent = `Como tocar: ${r.name}`;
+  $('rt-dica').textContent = r.tip;
+  const counts = countLabels(r);
+  $('rt-grade').replaceChildren(...[...r.steps].map((s, i) => {
+    const d = document.createElement('div');
+    d.className = `rt-step${i % r.sub === 0 ? ' beat' : ''}${STROKES[s]?.soft ? ' soft' : ''}`;
+    d.append(Object.assign(document.createElement('b'), { textContent: STROKES[s]?.label || '' }),
+      Object.assign(document.createElement('span'), { textContent: counts[i] }));
+    return d;
+  }));
+  $('rt-grade').setAttribute('aria-label', `Padrão de ${r.name}: ` +
+    [...r.steps].map((s, i) => `${counts[i]} ${STROKES[s]?.name.split(':')[0].toLowerCase() || 'pausa'}`).join(', '));
+  $('rt-legenda').replaceChildren(...[...new Set(r.steps.replace(/\./g, ''))].map(s => {
+    const li = document.createElement('li');
+    li.append(Object.assign(document.createElement('b'), { textContent: STROKES[s].label }), STROKES[s].name);
+    return li;
+  }), Object.assign(document.createElement('li'), { textContent: '· = a mão passa sem tocar (deixe soar)' }));
+  // Progressões: um acorde só, as de estudo (no tom escolhido) e as do usuário
+  const sel = $('rt-prog');
+  const um = option('um', `Só um acorde (${state.chord.symbol}) — para treinar a mão`);
+  const groups = STUDY_GROUPS.map(g => {
+    const og = Object.assign(document.createElement('optgroup'), { label: `Estudo · ${g}` });
+    og.append(...STUDY_PROGRESSIONS.filter(p => p.group === g).map(p => option(`estudo:${p.id}`, `${p.name} (${p.roman})`)));
+    return og;
+  });
+  const mine = store.progressions();
+  if (mine.length) {
+    const og = Object.assign(document.createElement('optgroup'), { label: 'Minhas progressões' });
+    og.append(...mine.map(p => option(`minha:${p.id}`, p.name)));
+    groups.push(og);
+  }
+  sel.replaceChildren(um, ...groups);
+  rtProgression();
+  sel.value = rt.prog;
+  const tom = $('rt-tom');
+  if (!tom.options.length) tom.append(...STUDY_KEYS.map(k => option(k, toPt(k))));
+  tom.value = store.prefs().studyKey;
+  tom.disabled = !rt.prog.startsWith('estudo:');
+  loadRtChords();
+}
+
+function selectRhythm(id) {
+  rt.id = id;
+  setBpm(rhythm().bpm);
+  gc(`ritmo/escolher/${id}`);
+  renderRhythms();
+}
+
+function loadRtChords() {
+  rt.chords = rtProgression().chords;
+  rt.frets = rt.chords.map(c => getVoicings(parseChord(c), state.instrument, state.tuning, { max: 8 })[0]?.frets || null);
+  rt.shown = -1;
+  showRtChord(0);
+}
+
+function showRtChord(i) {
+  if (rt.shown === i) return;
+  rt.shown = i;
+  const sym = rt.chords[i], v = getVoicings(parseChord(sym), state.instrument, state.tuning, { max: 8 })[0];
+  $('rt-diagrama').replaceChildren(...(v ? [renderDiagram(v, inst(), tun(), { compact: true, leftHanded: lefty() })] : []));
+  $('rt-acorde').textContent = sym;
+  $('rt-proximo').textContent = rt.chords.length > 1
+    ? `Acorde ${i + 1} de ${rt.chords.length} · próximo: ${rt.chords[(i + 1) % rt.chords.length]}` : 'Repita até a mão ficar solta.';
+}
+
+function setBpm(v) {
+  rt.bpm = Math.max(40, Math.min(160, Math.round(v)));
+  $('rt-bpm').value = rt.bpm;
+  $('rt-bpm-txt').textContent = `${rt.bpm} BPM`;
+}
+
+function startRhythm() {
+  if (!unlock() || audioNow() === null) return;
+  stopAuto();
+  Object.assign(rt, { on: true, chord: 0, step: 0, cycle: 0, next: audioNow() + 0.15 });
+  gc(`ritmo/tocar/${rt.id}`, { title: `Ritmo: ${rhythm().name}`, throttleMs: 5000 });
+  renderRtBtn();
+  rtTick();
+  checkSound();
+}
+function stopRhythm() {
+  if (!rt.on) return;
+  rt.on = false;
+  clearTimeout(rt.timer);
+  rt.ui.forEach(clearTimeout);
+  rt.ui = [];
+  stopAll();
+  document.querySelectorAll('.rt-step.now').forEach(e => e.classList.remove('now'));
+  showRtChord(0);
+  renderRtBtn();
+}
+function rtTick() {
+  if (!rt.on) return;
+  const r = rhythm(), now = audioNow(), cycles = +$('rt-ciclos').value;
+  while (rt.next < now + 0.3) {
+    const ci = rt.chord, step = rt.step, when = rt.next;
+    const st = rt.frets[ci] && strokeFor(r.steps[step], rt.frets[ci]);
+    if (st) scheduleFrets(st.frets, state.instrument, tun(), when, { ...st, gain: st.gain * (step % r.sub === 0 ? 1 : 0.85) });
+    const id = setTimeout(() => {
+      rt.ui = rt.ui.filter(x => x !== id);
+      if (!rt.on) return;
+      showRtChord(ci);
+      document.querySelectorAll('.rt-step').forEach((e, k) => e.classList.toggle('now', k === step));
+    }, Math.max(0, (when - now + audioLatency()) * 1000));
+    rt.ui.push(id);
+    rt.next += 60 / rt.bpm / r.sub;
+    if (++rt.step >= r.steps.length) {
+      rt.step = 0;
+      if (++rt.cycle >= cycles) {
+        rt.cycle = 0;
+        if (++rt.chord >= rt.chords.length) {
+          rt.chord = 0;
+          if ($('rt-acelerar').checked && rt.bpm < r.bpm + 20) setBpm(Math.min(rt.bpm + 4, r.bpm + 20));
+        }
+      }
+    }
+  }
+  rt.timer = setTimeout(rtTick, 60);
+}
+function renderRtBtn() {
+  const b = $('rt-tocar');
+  b.textContent = rt.on ? '■ Parar' : '▶ Tocar';
+  b.setAttribute('aria-pressed', String(rt.on));
+}
+$('rt-tocar').addEventListener('click', () => (rt.on ? stopRhythm() : startRhythm()));
+$('rt-menos').addEventListener('click', () => setBpm(rt.bpm - 5));
+$('rt-mais').addEventListener('click', () => setBpm(rt.bpm + 5));
+$('rt-bpm').addEventListener('input', e => setBpm(+e.target.value));
+$('rt-prog').addEventListener('change', e => { rt.prog = e.target.value; gc(`ritmo/progressao/${gcSlug(rt.prog)}`); renderRhythms(); });
+$('rt-tom').addEventListener('change', e => { store.setPref('studyKey', e.target.value); renderStudy(); renderRhythms(); });
+setBpm(rhythm().bpm);
 
 // ---------- Backup (JSON) ----------
 function downloadJSON(text, name) {
@@ -825,11 +991,12 @@ function showView(v) {
     if (b.dataset.go === v) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
   if (v !== 'acordes') endTour();
+  if (v === 'ritmos') renderRhythms(); else stopRhythm();
   window.scrollTo({ top: 0 });
   trackViewOf(v);
 }
 document.querySelectorAll('.bottom-nav [data-go]').forEach(b => b.addEventListener('click', () => showView(b.dataset.go)));
-const VIEW_TITLES = { acordes: 'Acordes', repertorio: 'Repertório', identificar: 'Identificar' };
+const VIEW_TITLES = { acordes: 'Acordes', repertorio: 'Repertório', identificar: 'Identificar', ritmos: 'Ritmos' };
 function trackViewOf(v) {
   trackView(`/${v}`, VIEW_TITLES[v] || v);
 }
