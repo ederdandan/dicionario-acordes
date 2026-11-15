@@ -4,7 +4,7 @@ import { parseChord, suggest } from './parser.js';
 import { INSTRUMENTS, DEFAULT_INSTRUMENT, DEFAULT_TUNING } from './instruments.js';
 import { getVoicings, identifyChord } from './voicings.js';
 import { renderDiagram, renderEditor } from './diagram.js';
-import { play, unlock, scheduleFrets, scheduleClick, scheduleDrum, scheduleBass, stopAll, audioNow, audioLatency, audioState } from './audio.js';
+import { play, unlock, preloadSamples, scheduleFrets, scheduleClick, scheduleDrum, scheduleBass, stopAll, audioNow, audioLatency, audioState } from './audio.js';
 import { createStorage, favoriteId, formatRoute, parseRoute, splitProgression } from './storage.js';
 import { STUDY_PROGRESSIONS, STUDY_GROUPS, STUDY_KEYS, transposeProgression } from './progressions.js';
 import { STROKES, LEVELS, rhythmsFor, countLabels, strokeFor, suggestedRhythm } from './rhythms.js';
@@ -109,6 +109,7 @@ function setInstrument(id) {
   if (id === state.instrument) return;
   state.instrument = id;
   state.tuning = Object.keys(INSTRUMENTS[id].tunings)[0];
+  preloadSamples(id);
   trackInstrument();
   selectChord(state.chord);
   renderReverse();
@@ -878,7 +879,7 @@ function renderBand() {
   $('rt-banda-padrao').replaceChildren(...defs.map(id => chip(id)));
   $('rt-banda-extra').replaceChildren(...Object.keys(PARTS).filter(id => !defs.includes(id)).map(id => chip(id, true)));
 }
-$('rt-banda').addEventListener('change', e => { rt.band.on = e.target.checked; gc(`ritmo/banda/${rt.band.on ? 'ativar' : 'desativar'}`); renderBand(); });
+$('rt-banda').addEventListener('change', e => { rt.band.on = e.target.checked; if (rt.band.on) preloadSamples('baixo'); gc(`ritmo/banda/${rt.band.on ? 'ativar' : 'desativar'}`); renderBand(); });
 $('rt-som-vol').addEventListener('input', e => { $('rt-som-vol-txt').textContent = `${e.target.value}%`; });
 $('rt-som-vol').addEventListener('change', e => gc(`ritmo/volume-instrumento/${e.target.value}`, { throttleMs: 10000 }));
 $('rt-banda-reset').addEventListener('click', () => { rt.band.for = null; gc('ritmo/banda/padrao'); renderBand(); });
@@ -1242,7 +1243,9 @@ $('tocar-batida').addEventListener('click', () => playCurrent('batida'));
 // como ativação do usuário (Chrome/Safari): o contexto nasceria suspenso. Use touchend/click/keydown.
 const UNLOCK_EVENTS = ['touchend', 'click', 'keydown'];
 function firstGesture() {
-  if (unlock()?.state === 'running') UNLOCK_EVENTS.forEach(ev => document.removeEventListener(ev, firstGesture, true));
+  const ok = unlock()?.state === 'running';
+  preloadSamples(state.instrument); // gravações do instrumento atual (o baixo carrega ao ligar o acompanhamento)
+  if (ok) UNLOCK_EVENTS.forEach(ev => document.removeEventListener(ev, firstGesture, true));
 }
 UNLOCK_EVENTS.forEach(ev => document.addEventListener(ev, firstGesture, { capture: true, passive: true }));
 // Ao voltar do segundo plano o iOS deixa o contexto 'interrupted': o próximo toque o retoma.

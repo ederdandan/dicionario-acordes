@@ -1,7 +1,10 @@
 // sw.js — service worker offline-first.
 // Ao publicar qualquer mudança nos arquivos abaixo, incremente CACHE_NAME: o app mostra
 // "Nova versão disponível — Atualizar" e só troca de versão quando o usuário confirmar.
-const CACHE_NAME = 'dicionario-acordes-v27';
+const CACHE_NAME = 'dicionario-acordes-v28';
+// Amostras gravadas (samples/): cache próprio, guardadas na 1ª vez que tocam e mantidas entre versões do app.
+// Ao trocar os arquivos de samples/, incremente SAMPLES_CACHE.
+const SAMPLES_CACHE = 'acordes-amostras-v1';
 
 // Caminhos relativos ao escopo do SW (funciona em usuario.github.io/repo/).
 const ASSETS = [
@@ -29,6 +32,7 @@ const ASSETS = [
   './icons/apple-touch-icon.png',
 ];
 const INDEX = new URL('./index.html', self.registration.scope).href;
+const SAMPLES = new URL('./samples/', self.registration.scope).href;
 
 self.addEventListener('install', event => {
   // Sem skipWaiting aqui: a versão nova espera o usuário clicar em "Atualizar".
@@ -38,7 +42,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter(k => k.startsWith('dicionario-acordes-') && k !== CACHE_NAME).map(k => caches.delete(k)));
+    await Promise.all(keys.filter(k => (k.startsWith('dicionario-acordes-') && k !== CACHE_NAME) || (k.startsWith('acordes-amostras-') && k !== SAMPLES_CACHE)).map(k => caches.delete(k)));
     await self.clients.claim();
   })());
 });
@@ -60,8 +64,8 @@ async function networkFirst(request) {
 }
 
 /** Demais arquivos: cache primeiro; o que não estiver no pré-cache vai à rede e é guardado. */
-async function cacheFirst(request) {
-  const cache = await caches.open(CACHE_NAME);
+async function cacheFirst(request, name = CACHE_NAME) {
+  const cache = await caches.open(name);
   const hit = await cache.match(request, { ignoreSearch: true });
   if (hit) return hit;
   const res = await fetch(request);
@@ -76,5 +80,5 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin || !url.href.startsWith(self.registration.scope)) return;
   const isPage = request.mode === 'navigate' || url.href === INDEX || url.href === self.registration.scope;
   if (url.pathname.endsWith('tests.html')) return; // testes sempre da rede
-  event.respondWith(isPage ? networkFirst(request) : cacheFirst(request));
+  event.respondWith(isPage ? networkFirst(request) : cacheFirst(request, url.href.startsWith(SAMPLES) ? SAMPLES_CACHE : CACHE_NAME));
 });

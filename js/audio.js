@@ -1,4 +1,5 @@
-// audio.js — sintetizador de corda dedilhada (Karplus-Strong) com Web Audio API.
+// audio.js — som das cordas com Web Audio API: amostras gravadas (samples/) quando carregadas,
+// sintetizador de corda dedilhada (Karplus-Strong) enquanto carregam ou se faltarem (offline sem cache, erro).
 // O AudioContext só é criado/retomado dentro de um gesto do usuário (unlock/play*).
 // Cada nota = 1 AudioBufferSourceNode + 1 GainNode, desconectados no `ended` (sem vazamento).
 import { noteToMidi } from './theory.js';
@@ -11,6 +12,21 @@ export const TIMBRES = {
 };
 /** Baixo do acompanhamento (Karplus-Strong mais grave e abafado). */
 const BASS = { t60: 1.6, blend: 0.6, pluck: 0.2, gain: 0.55 };
+/**
+ * Amostras gravadas (FluidR3_GM, CC BY 3.0 — ver samples/CREDITOS.md): uma nota a cada 3 semitons,
+ * reafinada por playbackRate. decay = constante de tempo (s) extra para encurtar a sustentação (ukulele).
+ */
+const SAMPLE_SETS = { nylon: { lo: 39, hi: 84 }, aco: { lo: 39, hi: 84 }, baixo: { lo: 33, hi: 60 } };
+// peak = pico da amostra normalizada, calibrado para soar tão alto quanto a síntese (RMS medido offline)
+const SAMPLE_FOR = {
+  violao: { set: 'nylon', peak: 0.3 },
+  viola: { set: 'aco', peak: 0.48 },
+  ukulele: { set: 'nylon', peak: 0.4, decay: 0.28 },
+  baixo: { set: 'baixo', peak: 0.3 },
+};
+let samplesOn = true;
+/** Liga/desliga as amostras gravadas (desligado = só síntese; usado nos testes e para comparar). */
+export function useSamples(on) { samplesOn = !!on; }
 export const MODES = { dedilhar: 0.065, batida: 0.018 };
 const DETUNE = [3, -2, 2, -3, 1.5, -1.5]; // cents da 2ª corda de cada par (determinístico → cacheável)
 
@@ -62,6 +78,7 @@ const active = new Set();              // vozes soando
 const byCourse = new Map();            // course → Set de vozes (abafa a corda ao re-tocá-la)
 const cache = new Map();               // buffers prontos (LRU simples)
 const CACHE_MAX = 160, MAX_VOICES = 48;
+const sampleSets = new Map();          // set → { notes: Map(midi → { buffer, offset, norm }) } | 'loading' | 'error'
 
 function build(c) {
   ctx = c;
@@ -95,6 +112,7 @@ function build(c) {
   body[body.length - 1].connect(master);
   body = body[0];
   cache.clear();
+  sampleSets.clear();
   noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate); // 1 s de ruído branco para a percussão
   const nd = noise.getChannelData(0);
   let s = 12345;
@@ -183,6 +201,55 @@ function bufferFor(instrumentId, freq) {
   return b;
 }
 
+/** Base de `samples/` (ao lado de js/), funciona em subpasta (usuario.github.io/repo/). */
+const SAMPLE_BASE = new URL('../samples/', import.meta.url);
+
+/**
+ * Carrega (uma vez) as amostras do instrumento: baixa, decodifica, acha o início do som (o MP3 traz
+ * silêncio no começo) e normaliza o pico. Enquanto não terminar, as notas usam a síntese.
+ */
+export function preloadSamples(instrumentId) {
+  const set = SAMPLE_FOR[instrumentId]?.set;
+  if (!ctx || !set || sampleSets.has(set) || typeof fetch !== 'function') return;
+  sampleSets.set(set, 'loading');
+  const { lo, hi } = SAMPLE_SETS[set], c = ctx, jobs = [];
+  for (let m = lo; m <= hi; m++) {
+    if (m % 3) continue;
+    jobs.push(fetch(new URL(`${set}/${m}.mp3`, SAMPLE_BASE))
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer(); })
+      .then(data => new Promise((ok, fail) => { const p = c.decodeAudioData(data, ok, fail); if (p?.catch) p.catch(fail); }))
+      .then(buffer => [m, prepSample(buffer)]));
+  }
+  Promise.all(jobs).then(list => {
+    if (ctx === c) sampleSets.set(set, { notes: new Map(list) });
+  }).catch(err => {
+    console.warn(`[audio] amostras "${set}" indisponíveis, usando síntese:`, err.message);
+    if (ctx === c) sampleSets.set(set, 'error');
+  });
+}
+
+function prepSample(buffer) {
+  const d = buffer.getChannelData(0);
+  let peak = 0;
+  for (let i = 0; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i]));
+  let i = 0;
+  while (i < d.length && Math.abs(d[i]) < peak * 0.02) i++;
+  return { buffer, offset: Math.max(0, i / buffer.sampleRate - 0.002), norm: peak > 0 ? 1 / peak : 1 };
+}
+
+/** Amostra mais próxima da nota (MIDI fracionário) ou null se o conjunto ainda não está pronto. */
+function sampleFor(instrumentId, midi) {
+  const spec = SAMPLE_FOR[instrumentId];
+  if (!samplesOn || !spec) return null;
+  const st = sampleSets.get(spec.set);
+  if (!st) preloadSamples(instrumentId);
+  if (!st?.notes) return null;
+  const { lo, hi } = SAMPLE_SETS[spec.set];
+  const base = Math.min(hi, Math.max(lo, 3 * Math.round(midi / 3)));
+  const s = st.notes.get(base);
+  return s && { ...s, rate: 2 ** ((midi - base) / 12), level: s.norm * spec.peak, decay: spec.decay };
+}
+
 function release(v, when) {
   if (v.released) return;
   v.released = true;
@@ -199,17 +266,26 @@ function cleanup(v) {
 }
 
 function startVoice(voice, instrumentId, when, level) {
-  const src = ctx.createBufferSource();
-  src.buffer = bufferFor(instrumentId, midiToFreq(voice.midi + voice.cents / 100));
-  const gain = ctx.createGain();
-  gain.gain.value = level;
-  src.connect(gain).connect(instrumentId === 'baixo' ? master : body);
+  const src = ctx.createBufferSource(), gain = ctx.createGain();
+  const smp = sampleFor(instrumentId, voice.midi + voice.cents / 100);
+  if (smp) {
+    // Gravação: já tem o corpo do instrumento — vai direto ao master (com reverb), sem o EQ de corpo
+    src.buffer = smp.buffer;
+    src.playbackRate.value = smp.rate;
+    gain.gain.value = level * smp.level;
+    if (smp.decay) gain.gain.setTargetAtTime(0, when + 0.08, smp.decay);
+    src.connect(gain).connect(master);
+  } else {
+    src.buffer = bufferFor(instrumentId, midiToFreq(voice.midi + voice.cents / 100));
+    gain.gain.value = level;
+    src.connect(gain).connect(instrumentId === 'baixo' ? master : body);
+  }
   const v = { src, gain, course: voice.course, released: false };
   src.onended = () => cleanup(v);
   active.add(v);
   if (!byCourse.has(v.course)) byCourse.set(v.course, new Set());
   byCourse.get(v.course).add(v);
-  src.start(when);
+  if (smp) src.start(when, smp.offset); else src.start(when);
   return v;
 }
 
