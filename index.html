@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="Dicionário de acordes para violão, viola caipira e ukulele: busca por cifra, diagramas e análise de notas.">
-  <meta name="theme-color" content="#b5532a">
+  <meta name="theme-color" content="#f5f2ee" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)">
   <title>Dicionário de Acordes</title>
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" type="image/svg+xml" href="./icons/logo.svg">
@@ -22,6 +23,7 @@
     } catch (e) {}
   </script>
   <link rel="stylesheet" href="./css/app.css">
+  <link rel="stylesheet" href="./css/redesign.css">
 </head>
 <body data-view="acordes">
   <header class="topbar">
@@ -30,7 +32,7 @@
         <path d="M14 17V54M21.2 17V54M28.4 17V54M35.6 17V54M42.8 17V54M50 17V54M14 27H50M14 37H50M14 47H50" fill="none" stroke="currentColor" stroke-width="2.6"/>
         <circle cx="21.2" cy="42" r="4.6"/><circle cx="28.4" cy="32" r="4.6"/><circle cx="42.8" cy="22" r="4.6"/>
       </svg>Dicionário de Acordes</h1>
-    <button id="ajustes-abrir" type="button" class="btn gear" aria-haspopup="dialog" aria-controls="ajustes"><span aria-hidden="true">⚙</span> Ajustes</button>
+    <button id="ajustes-abrir" type="button" class="btn gear" aria-haspopup="dialog" aria-controls="ajustes"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg> Ajustes</button>
     <div class="search" role="search">
       <label for="busca" class="sr-only">Buscar acorde</label>
       <input id="busca" type="text" autocomplete="off" spellcheck="false"
@@ -42,10 +44,10 @@
   </header>
 
   <nav class="bottom-nav sections" aria-label="Seções">
-    <button type="button" data-go="acordes" aria-current="page"><span aria-hidden="true">♪</span>Acordes</button>
-    <button type="button" data-go="repertorio"><span aria-hidden="true">★</span>Repertório</button>
-    <button type="button" data-go="ritmos"><span aria-hidden="true">♫</span>Ritmos</button>
-    <button type="button" data-go="identificar"><span aria-hidden="true">?</span>Identificar</button>
+    <button type="button" data-go="acordes" aria-current="page"><span aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>Acordes</button>
+    <button type="button" data-go="repertorio"><span aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z"/></svg></span>Repertório</button>
+    <button type="button" data-go="ritmos"><span aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M2 12h3l2-6 3 12 3-9 2 3h7"/></svg></span>Ritmos</button>
+    <button type="button" data-go="identificar"><span aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/><path d="M11 8v3l2 1"/></svg></span>Identificar</button>
   </nav>
 
   <main class="layout">

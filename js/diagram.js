@@ -43,6 +43,7 @@ export function renderDiagram(voicing, instrument, tuning, { leftHanded = false,
     'aria-label': describeVoicing(voicing, tuning), preserveAspectRatio: 'xMidYMid meet',
   });
   const fg = 'var(--dg-fg, #111)', bg = 'var(--dg-bg, #fff)', grid = 'var(--dg-grid, #555)';
+  const dot = 'var(--dg-dot, var(--dg-fg, #111))', dotFg = 'var(--dg-dot-fg, var(--dg-bg, #fff))';
 
   // Grade
   for (let r = 0; r <= rows; r++) {
@@ -77,9 +78,9 @@ export function renderDiagram(voicing, instrument, tuning, { leftHanded = false,
   for (const b of voicing.barres || []) {
     const r = b.fret - base + 1;
     const x1 = Math.min(x(b.from), x(b.to)), x2 = Math.max(x(b.from), x(b.to));
-    svg.append(el('rect', { x: x1 - 10, y: yRow(r) - 10, width: x2 - x1 + 20, height: 20, rx: 10, fill: fg }));
+    svg.append(el('rect', { x: x1 - 10, y: yRow(r) - 10, width: x2 - x1 + 20, height: 20, rx: 10, fill: dot }));
     svg.append(el('text', {
-      x: (x1 + x2) / 2, y: yRow(r) + 4.5, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 700, fill: bg,
+      x: (x1 + x2) / 2, y: yRow(r) + 4.5, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 700, fill: dotFg,
     }, String(b.finger)));
     for (let i = b.from; i <= b.to; i++) if (voicing.frets[i] === b.fret) covered.add(i);
   }
@@ -87,10 +88,10 @@ export function renderDiagram(voicing, instrument, tuning, { leftHanded = false,
   voicing.frets.forEach((f, i) => {
     if (f <= 0 || covered.has(i)) return;
     const cy = yRow(f - base + 1);
-    svg.append(el('circle', { cx: x(i), cy, r: 10, fill: fg }));
+    svg.append(el('circle', { cx: x(i), cy, r: 10, fill: dot }));
     if (voicing.fingers[i]) {
       svg.append(el('text', {
-        x: x(i), y: cy + 4.5, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 700, fill: bg,
+        x: x(i), y: cy + 4.5, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 700, fill: dotFg,
       }, String(voicing.fingers[i])));
     }
   });
@@ -169,7 +170,7 @@ export function renderEditor(frets, instrument, tuning, { baseFret = 1, rows = 5
       if (f < 0) svg.append(el('path', { d: `M${x(i) - 4} ${cy - 4}L${x(i) + 4} ${cy + 4}M${x(i) + 4} ${cy - 4}L${x(i) - 4} ${cy + 4}`, stroke: fg, 'stroke-width': 1.6, 'stroke-linecap': 'round' }));
     }
     const r = f - baseFret + 1;
-    if (f > 0 && r >= 1 && r <= rows) svg.append(el('circle', { cx: x(i), cy: top + (r - 0.5) * rowH, r: 10, fill: fg }));
+    if (f > 0 && r >= 1 && r <= rows) svg.append(el('circle', { cx: x(i), cy: top + (r - 0.5) * rowH, r: 10, fill: 'var(--dg-dot, var(--dg-fg, #111))' }));
     svg.append(el('text', { x: x(i), y: top + rows * rowH + 18, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700, fill: fg }, f < 0 ? 'x' : String(f)));
     svg.append(el('text', { x: x(i), y: top + rows * rowH + 32, 'text-anchor': 'middle', 'font-size': 9, fill: grid }, c.split(' ')[0]));
     svg.append(button({ x: x(i) - colW / 2, y: top - 34, width: colW, height: 28 },

@@ -1,7 +1,7 @@
 // sw.js — service worker offline-first.
 // Ao publicar qualquer mudança nos arquivos abaixo, incremente CACHE_NAME: o app mostra
 // "Nova versão disponível — Atualizar" e só troca de versão quando o usuário confirmar.
-const CACHE_NAME = 'dicionario-acordes-v30';
+const CACHE_NAME = 'dicionario-acordes-v31';
 // Amostras gravadas (samples/): cache próprio, guardadas na 1ª vez que tocam e mantidas entre versões do app.
 // Ao trocar os arquivos de samples/, incremente SAMPLES_CACHE.
 const SAMPLES_CACHE = 'acordes-amostras-v1';
@@ -12,6 +12,7 @@ const ASSETS = [
   './index.html',
   './manifest.json',
   './css/app.css',
+  './css/redesign.css',
   './js/app.js',
   './js/theory.js',
   './js/parser.js',

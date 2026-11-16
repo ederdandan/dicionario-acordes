@@ -1,0 +1,301 @@
+/* ==========================================================================
+   Dicionário de Acordes — Redesign v2  (camada "drop-in")
+   Carregue DEPOIS de css/app.css:
+   <link rel="stylesheet" href="css/redesign.css">
+   Não exige mudar HTML nem JS: usa as classes existentes.
+   ========================================================================== */
+
+/* ---------- 1. TOKENS ---------------------------------------------------- */
+:root {
+  /* Superfícies em camadas (tonal elevation) em vez de bordas */
+  --bg:            #f5f2ee;   /* fundo da página — levemente quente */
+  --surface:       #ffffff;   /* cards */
+  --surface-2:     #f1ece6;   /* preenchimento de inputs/chips (tonal) */
+  --surface-3:     #e8e1d9;   /* hover/pressed */
+  --fg:            #1c1a17;
+  --muted:         #6f685e;
+  --border:        transparent;            /* bordas saem de cena */
+  --hairline:      rgba(28, 26, 23, .08);  /* divisória quando inevitável */
+  --accent:        #b5532a;
+  --accent-fg:     #ffffff;
+  --accent-soft:   #f6e4d9;
+  --accent-ink:    #8a3c1b;  /* texto sobre accent-soft (contraste AA) */
+  --danger:        #b3261e;
+  --danger-soft:   #fbe7e5;
+  --focus:         #2a6fb5;
+
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius:    20px;          /* cards */
+  --radius-pill: 999px;
+
+  --shadow-1: 0 1px 2px rgba(28,26,23,.04), 0 2px 8px rgba(28,26,23,.04);
+  --shadow-2: 0 2px 6px rgba(28,26,23,.06), 0 12px 32px rgba(28,26,23,.08);
+  --shadow-3: 0 8px 24px rgba(28,26,23,.12), 0 24px 64px rgba(28,26,23,.12);
+
+  --space-1: 4px; --space-2: 8px; --space-3: 12px;
+  --space-4: 16px; --space-5: 24px; --space-6: 32px;
+
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Inter Tight", "Inter", system-ui, -apple-system, sans-serif;
+
+  /* Diagrama: grade mais leve, dedos na cor de destaque */
+  --dg-grid:   #a8a093;
+  --dg-dot:    var(--accent);
+  --dg-dot-fg: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121110; --surface: #1c1b19; --surface-2: #262420; --surface-3: #312e29;
+    --fg: #efebe4; --muted: #a8a196; --hairline: rgba(255,255,255,.07);
+    --accent: #e8865a; --accent-fg: #1a0f08; --accent-soft: #3a261b; --accent-ink: #f3b08f;
+    --danger: #ff8a80; --danger-soft: #3a1d1b; --focus: #7fb2ea; --dg-grid: #8a8378; --dg-dot-fg: #1a0f08;
+    --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+    --shadow-2: 0 2px 8px rgba(0,0,0,.35), 0 12px 32px rgba(0,0,0,.35);
+    --shadow-3: 0 12px 40px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121110; --surface: #1c1b19; --surface-2: #262420; --surface-3: #312e29;
+  --fg: #efebe4; --muted: #a8a196; --hairline: rgba(255,255,255,.07);
+  --accent: #e8865a; --accent-fg: #1a0f08; --accent-soft: #3a261b; --accent-ink: #f3b08f;
+  --danger: #ff8a80; --danger-soft: #3a1d1b; --focus: #7fb2ea; --dg-grid: #8a8378; --dg-dot-fg: #1a0f08;
+  --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-2: 0 2px 8px rgba(0,0,0,.35), 0 12px 32px rgba(0,0,0,.35);
+  --shadow-3: 0 12px 40px rgba(0,0,0,.6);
+}
+
+/* ---------- 2. BASE & TIPOGRAFIA ---------------------------------------- */
+body {
+  font-family: var(--font);
+  font-feature-settings: "cv11", "ss01", "tnum";
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.005em;
+  -webkit-tap-highlight-color: transparent;
+}
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-xs); }
+
+/* ---------- 3. TOPBAR: funde com o fundo, sem linha ---------------------- */
+.topbar { border-bottom: 0; background: var(--bg); }
+.brand { font-family: var(--font-display); font-weight: 750; letter-spacing: -0.02em; }
+.gear {
+  background: transparent !important; border: 0 !important;
+  border-radius: var(--radius-pill) !important; color: var(--muted) !important;
+}
+.gear:hover { background: var(--surface-2) !important; color: var(--fg) !important; }
+
+/* Busca: campo "filled" em pílula com ícone de lupa */
+.search input {
+  border: 0; border-radius: var(--radius-pill);
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%236f685e' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 14px 50%;
+  padding: 12px 16px 12px 42px !important;
+  box-shadow: var(--shadow-1);
+  transition: box-shadow .2s var(--ease);
+}
+.search input:focus { outline: none; box-shadow: 0 0 0 2px var(--accent), var(--shadow-2); }
+.suggestions { border: 0; border-radius: var(--radius-sm); box-shadow: var(--shadow-3); padding: 6px; }
+.suggestions li { border-radius: var(--radius-xs); padding: 10px 12px; }
+
+/* ---------- 4. LAYOUT: cards flutuantes ---------------------------------- */
+.layout { gap: var(--space-4); }
+.panel {
+  border: 0;
+  border-radius: var(--radius);
+  padding: var(--space-5) var(--space-4);
+  box-shadow: var(--shadow-1);
+}
+/* Título de seção: sai o "OVERLINE CAIXA-ALTA", entra título de verdade */
+.panel-title {
+  text-transform: none; letter-spacing: -0.01em;
+  font-size: 1.125rem; font-weight: 700; color: var(--fg);
+  margin-bottom: var(--space-3);
+}
+
+/* ---------- 5. BOTÕES ---------------------------------------------------- */
+.btn, .chip {
+  border: 0;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  font-weight: 600;
+  transition: background .15s var(--ease), transform .1s var(--ease), box-shadow .2s var(--ease);
+}
+.btn:hover, .chip:hover { background: var(--surface-3); border-color: transparent; }
+.btn:active, .chip:active { transform: scale(.97); }
+.btn:disabled { opacity: .35; }
+
+/* Primário (preenchido) — só UM por área visual */
+.play-btn, #tocar-dedilhar {
+  background: var(--accent); color: var(--accent-fg);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.play-btn:hover, #tocar-dedilhar:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
+/* Secundário tonal */
+#tocar-batida { background: var(--accent-soft); color: var(--accent-ink); box-shadow: none; }
+#tocar-batida:hover { background: color-mix(in srgb, var(--accent-soft) 80%, var(--accent)); }
+
+/* Toggle pressionado (ex.: Favoritar ativo) */
+.btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
+
+/* Chips = pílulas */
+.chip { border-radius: var(--radius-pill); padding: 8px 14px; font-weight: 500; }
+.chip[aria-pressed="true"] { box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent); }
+
+.btn.small { border-radius: var(--radius-pill); padding: 6px 14px; font-size: .8125rem; }
+
+/* Selects nativos: tonal + chevron próprio */
+select, .bar-select, .study-head select, .rehearsal-auto select, .rt-ctrl select {
+  appearance: none; -webkit-appearance: none;
+  border: 0 !important; border-radius: var(--radius-sm) !important;
+  background: var(--surface-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236f685e' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center !important;
+  padding: 10px 38px 10px 14px !important;
+  font-weight: 600; min-height: 44px;
+}
+input[type="text"], input[type="search"], .prog-form input, .reverse-input input, .rt-search {
+  border: 0 !important; border-radius: var(--radius-sm) !important;
+  background: var(--surface-2) !important; padding: 12px 14px !important; min-height: 44px;
+}
+input:focus, select:focus { outline: none; box-shadow: 0 0 0 2px var(--accent); }
+input[type="range"] { accent-color: var(--accent); }
+
+/* ---------- 6. NAVEGAÇÃO INFERIOR (M3: indicador em pílula) -------------- */
+@media (max-width: 859px) {
+  .bottom-nav {
+    border-top: 0;
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    backdrop-filter: saturate(1.6) blur(20px);
+    -webkit-backdrop-filter: saturate(1.6) blur(20px);
+    box-shadow: 0 -1px 0 var(--hairline), 0 -8px 24px rgba(0,0,0,.04);
+    padding-top: 8px;
+  }
+  .bottom-nav button { font-size: .75rem; font-weight: 500; gap: 4px; min-height: 60px; }
+  .bottom-nav button span {
+    display: grid; place-items: center;
+    width: 56px; height: 30px; border-radius: var(--radius-pill);
+    transition: background .2s var(--ease), color .2s var(--ease);
+  }
+  .bottom-nav button[aria-current="page"] { color: var(--fg); font-weight: 700; }
+  .bottom-nav button[aria-current="page"] span { background: var(--accent-soft); color: var(--accent-ink); }
+
+  /* Barra de escolha do acorde: segmented control de 3 partes */
+  .chord-bar {
+    gap: 4px; padding: 4px; margin-bottom: var(--space-4);
+    background: var(--surface-2); border-radius: var(--radius-sm);
+  }
+  .chord-bar .bar-btn { background: var(--surface); box-shadow: var(--shadow-1); border-radius: 9px; }
+  .chord-bar .bar-select { background-color: transparent !important; }
+}
+@media (min-width: 860px) {
+  .bottom-nav { border-bottom: 0; box-shadow: 0 1px 0 var(--hairline); background: var(--bg); }
+  .bottom-nav button { border-bottom-width: 0 !important; border-radius: var(--radius-pill); margin: 8px 0; padding: 8px 18px; }
+  .bottom-nav button[aria-current="page"] { background: var(--accent-soft); color: var(--accent-ink); }
+}
+
+/* ---------- 7. TELA ACORDES --------------------------------------------- */
+.chord-symbol {
+  font-family: var(--font-display);
+  font-size: clamp(3rem, 14vw, 4.25rem) !important;
+  font-weight: 800; letter-spacing: -0.04em; line-height: 1 !important;
+}
+.chord-name { font-size: .95rem; font-weight: 500; margin-top: 4px; }
+.voicing-label { font-size: .9375rem; }
+.play { gap: var(--space-2); margin: var(--space-3) 0 var(--space-2); }
+.play .btn { min-height: 52px; border-radius: var(--radius-sm); padding: 10px 8px; white-space: nowrap; }
+.pos-count { font-weight: 600; color: var(--muted); font-size: .875rem; }
+
+/* Miniaturas de posição: sem borda, anel no selecionado */
+.thumb { background: var(--surface-2); border-radius: var(--radius-sm); padding: 8px 6px; }
+.thumb[aria-pressed="true"] { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
+
+/* Análise: "chips de nota" + tabela sem grades */
+.facts { gap: 8px 16px; }
+.facts dd { font-weight: 700; }
+.string-table { border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
+.string-table th { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; padding-bottom: 8px; }
+.string-table th, .string-table td { border-bottom: 0; padding: 9px 6px; }
+.string-table tbody tr:nth-child(odd) td { background: var(--surface-2); }
+.string-table tbody tr td:first-child { border-radius: 10px 0 0 10px; }
+.string-table tbody tr td:last-child  { border-radius: 0 10px 10px 0; font-weight: 600; }
+
+/* Ensaio de progressão */
+.rehearsal { border: 0; border-radius: var(--radius); padding: var(--space-4); }
+
+/* ---------- 8. TELA REPERTÓRIO ------------------------------------------ */
+.item-list { gap: var(--space-2); }
+.study-list li {
+  background: var(--surface-2); border-radius: var(--radius); padding: 6px; gap: 4px;
+}
+.study-list li > .study-open { background: transparent; padding: 10px 12px; gap: 2px; }
+.study-list li > .study-open:hover { background: var(--surface-3); }
+.study-chords { font-family: var(--font-display); font-size: 1.125rem !important; font-weight: 750; letter-spacing: -0.01em; color: var(--fg); }
+.study-list li > .btn.small { align-self: center; background: var(--surface); box-shadow: var(--shadow-1); }
+.study-songs { padding: 0 8px 6px; }
+.study-songs > small { display: none; } /* rótulo "Músicas:" é redundante */
+.study-songs .chip { background: var(--surface); font-weight: 500; }
+.study-songs .chip.in-key { background: var(--accent-soft); color: var(--accent-ink); border: 0; }
+.study-group { font-size: 1rem; font-weight: 700; margin-top: var(--space-5); }
+.prog-nova > summary { color: var(--accent); }
+
+/* ---------- 9. TELA RITMOS ---------------------------------------------- */
+.rt-trocar { background: var(--surface-2) !important; border-radius: var(--radius) !important; padding: 14px 16px !important; }
+.rt-grid { gap: 6px; }
+.rt-step { border: 0; background: var(--surface-2); border-radius: var(--radius-sm); padding: 10px 0 6px; transition: transform .12s var(--ease), background .12s; }
+.rt-step.beat { box-shadow: inset 0 -3px 0 var(--muted); }
+.rt-step.now { background: var(--accent); transform: translateY(-3px) scale(1.04); box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 40%, transparent); }
+.rt-chord { font-family: var(--font-display); font-size: 2.25rem !important; letter-spacing: -0.03em; }
+@media (max-width: 859px) {
+  .rt-bar {
+    border: 0; border-radius: var(--radius-pill);
+    padding: 6px 6px 6px 6px;
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    box-shadow: var(--shadow-3);
+  }
+  .rt-bar #rt-tocar { border-radius: var(--radius-pill); min-height: 48px; }
+  .rt-bar .rt-speed .btn { border-radius: var(--radius-pill); min-width: 40px; min-height: 40px; }
+}
+.rt-band { border-top: 0; background: var(--surface-2); border-radius: var(--radius); padding: var(--space-4); }
+
+/* ---------- 10. TELA IDENTIFICAR ---------------------------------------- */
+.reverse-input input { font-size: 1.125rem !important; letter-spacing: .12em; }
+.reverse-input input::placeholder { letter-spacing: normal; font-size: 1rem; }
+.result-card { border: 0; background: var(--surface-2); border-radius: var(--radius-sm); padding: 12px 14px; }
+.result-card:hover { background: var(--accent-soft); }
+.result-cards li:first-child .result-card { background: var(--accent-soft); } /* melhor match em destaque */
+.result-card strong { font-family: var(--font-display); font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
+
+/* ---------- 11. GAVETAS, AJUSTES, TOAST, TOUR --------------------------- */
+.sheet { border-radius: 28px 28px 0 0; box-shadow: var(--shadow-3); padding-top: 28px; }
+.sheet::before { /* "grabber" estilo iOS */
+  content: ""; position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  width: 36px; height: 5px; border-radius: 3px; background: var(--surface-3);
+}
+.sheet::backdrop, .ios-dialog::backdrop { background: rgba(10,9,8,.35); backdrop-filter: blur(4px); }
+.settings, .ios-dialog { border: 0; border-radius: 28px; box-shadow: var(--shadow-3); }
+
+.seg-radio { border: 0; background: var(--surface-2); border-radius: var(--radius-sm); padding: 4px; gap: 4px; }
+.seg-radio label { border-radius: 9px; min-height: 40px; }
+.seg-radio label + label { border-left: 0; }
+.seg-radio label:has(input:checked) { background: var(--surface); color: var(--fg); box-shadow: var(--shadow-1); }
+
+.danger-zone { border: 0; background: var(--danger-soft); border-radius: var(--radius); padding: var(--space-4); }
+.danger-btn { background: var(--danger) !important; color: #fff !important; }
+
+.toast { border-radius: var(--radius-pill); padding: 8px 8px 8px 20px; box-shadow: var(--shadow-3); }
+.toast .btn { border-radius: var(--radius-pill); }
+
+.tour { border: 0; border-radius: var(--radius); box-shadow: var(--shadow-3), inset 0 3px 0 var(--accent); padding: 18px; }
+.tour-on { outline: 2px solid var(--accent); outline-offset: 6px; border-radius: var(--radius); }
+
+kbd { border: 0; background: var(--surface-2); border-radius: 6px; padding: 1px 6px; }
+
+/* Modo palco */
+.stage-symbol { font-family: var(--font-display); font-weight: 800; letter-spacing: -0.04em; font-size: clamp(3.5rem, 18vw, 6rem) !important; }
+.stage-nav .btn { border-radius: var(--radius); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+  .rt-step.now { transform: none; }
+}
